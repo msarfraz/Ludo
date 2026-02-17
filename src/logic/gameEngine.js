@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { PLAYERS, PLAYER_ORDER, PIECE_COUNT, GAME_MODES, START_POSITIONS, SAFE_SPOTS } from '../constants/gameConstants';
 import { playDiceRollSound, playMoveSound } from '../utils/soundUtils';
 
@@ -9,13 +9,14 @@ const PATH_OFFSETS = {
     [PLAYERS.RED]: 39
 };
 
-export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
+export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) => {
     const [turn, setTurn] = useState(0);
     const [diceQueue, setDiceQueue] = useState([]); // Array of { id, value }
     const [selectedDiceId, setSelectedDiceId] = useState(null);
     const [rolling, setRolling] = useState(false);
     const [canRoll, setCanRoll] = useState(true);
     const [consecutiveSixes, setConsecutiveSixes] = useState(0);
+    const pendingAutoMoveRef = useRef(null);
 
     const [playerData, setPlayerData] = useState(() => {
         const data = {};
@@ -47,20 +48,20 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
 
     const currentPlayerColor = PLAYER_ORDER[turn];
 
-    const isValidMove = useCallback((token, diceValue) => {
+    const isValidMove = useCallback((token, diceValue, tokenColor = currentPlayerColor) => {
         if (token.stepsMoved === -1 && diceValue !== 6) return false;
         if (token.stepsMoved + diceValue > 56) return false;
 
-        // Master Mode Check
-        if (gameMode === GAME_MODES.MASTER && !playerData[currentPlayerColor].hasCaptured && (token.stepsMoved + diceValue > 50)) {
+        // Master Mode Check - Check CAPTURE status of the TOKEN OWNER
+        if (gameMode === GAME_MODES.MASTER && !playerData[tokenColor].hasCaptured && (token.stepsMoved + diceValue > 50)) {
             return false;
         }
 
         // Double Token Checks
-        const currentTokens = gameState[currentPlayerColor];
+        const currentTokens = gameState[tokenColor];
         const tokensAtSpot = currentTokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
         const isDoubled = tokensAtSpot.length >= 2;
-        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[currentPlayerColor] + token.stepsMoved) % 52);
+        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52);
 
         if (isDoubled) {
             // Rule: Double tokens can only be separated on safe spots.
@@ -87,20 +88,30 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
 
         // If exiting home (-1 -> 0), we don't traverse. We just spawn. 
         // So no path blocking check needed. 
-        // But we DO need to check if landing spot has a double that we cannot capture (handled below in landing check? No, isValidMove should return false if move is invalid).
-        // Wait, isValidMove generally checks "can I initiate this move?". 
-
         if (token.stepsMoved === -1) {
             // We are spawning at 0. 
             // Rule: Single token cannot capture opponent Double.
             // Check if 0 has opponent Double.
-            const offset = PATH_OFFSETS[currentPlayerColor];
+            const offset = PATH_OFFSETS[tokenColor];
             const startGlobal = offset % 52;
-            // (offset + 0) % 52
 
             let blockedByOpponentDouble = false;
             PLAYER_ORDER.forEach(pColor => {
-                if (pColor === currentPlayerColor) return;
+                if (pColor === tokenColor) return;
+
+                // Team Mode: Is pColor a teammate?
+                let isTeammate = false;
+                if (isTeamMode) {
+                    const idx1 = PLAYER_ORDER.indexOf(tokenColor);
+                    const idx2 = PLAYER_ORDER.indexOf(pColor);
+                    if (Math.abs(idx1 - idx2) === 2) isTeammate = true;
+                }
+
+                // Usually teammates don't block? Let's assume Teammate Double is safe to cross/land/spawn?
+                // User requirement just said "share dice". 
+                // But blockade rule says "Opponent Double". Teammate is not opponent.
+                if (isTeammate) return;
+
                 const pOffset = PATH_OFFSETS[pColor];
                 const pRelative = (startGlobal - pOffset + 52) % 52;
                 const oppTokens = gameState[pColor].filter(t => t.stepsMoved === pRelative);
@@ -116,16 +127,14 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         }
 
         // Check moves from current+1 to target
-        // Note: stepsMoved is relative to player. We need global path index.
         const startStep = token.stepsMoved + 1;
         const endStep = token.stepsMoved + diceValue;
 
         for (let step = startStep; step < endStep; step++) {
             // Check if there is a double at this step
             if (step > 50) continue; // Home stretch usually no blocking? or implies safe?
-            // "Home path" (51-56) usually safe/private, but let's check global path for main board (0-50).
 
-            const offset = PATH_OFFSETS[currentPlayerColor];
+            const offset = PATH_OFFSETS[tokenColor];
             const globalIndex = (offset + step) % 52;
             const isSpotSafe = SAFE_SPOTS.includes(globalIndex);
 
@@ -134,17 +143,29 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
             // Check for doubles at globalIndex (ANY Double: Own or Opponent)
             let doubleFound = false;
             PLAYER_ORDER.forEach(pColor => {
+                // Team Mode: Teammate double should NOT block?
+                let isTeammate = false;
+                if (isTeamMode && pColor !== tokenColor) {
+                    const idx1 = PLAYER_ORDER.indexOf(tokenColor);
+                    const idx2 = PLAYER_ORDER.indexOf(pColor);
+                    if (Math.abs(idx1 - idx2) === 2) isTeammate = true;
+                }
+
+                // If isTeammate, skip strict blockade check?
+                // But rule is "Opponent Double" blocks. "Pass over opponent double".
+                // So Teammate double does not block.
+                if (isTeammate) return;
+
                 const pOffset = PATH_OFFSETS[pColor];
                 const pRelativeStep = (globalIndex - pOffset + 52) % 52;
 
                 const tokensAtStep = gameState[pColor].filter(t => t.stepsMoved === pRelativeStep && t.stepsMoved <= 50);
                 if (tokensAtStep.length >= 2) {
-                    doubleFound = true; // Found a double (own or opponent)
+                    doubleFound = true; // Found a double
                 }
             });
 
             if (doubleFound) {
-                // Blocked!
                 return false;
             }
         }
@@ -153,13 +174,21 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         // Check landing spot
         const landSteps = token.stepsMoved === -1 ? 0 : token.stepsMoved + diceValue;
         if (landSteps <= 50) {
-            const offset = PATH_OFFSETS[currentPlayerColor];
+            const offset = PATH_OFFSETS[tokenColor];
             const globalLandIndex = (offset + landSteps) % 52;
             if (!isGloballySafe(globalLandIndex)) {
                 // Check neighbors
                 let opponentDoubleAtLand = false;
                 PLAYER_ORDER.forEach(pColor => {
-                    if (pColor === currentPlayerColor) return;
+                    if (pColor === tokenColor) return;
+
+                    // Team check
+                    if (isTeamMode) {
+                        const idx1 = PLAYER_ORDER.indexOf(tokenColor);
+                        const idx2 = PLAYER_ORDER.indexOf(pColor);
+                        if (Math.abs(idx1 - idx2) === 2) return; // Teammate double doesn't count as "Opponent Double" for capture restriction
+                    }
+
                     const pOffset = PATH_OFFSETS[pColor];
                     const pOneStep = (globalLandIndex - pOffset + 52) % 52;
                     const oppTokens = gameState[pColor].filter(t => t.stepsMoved === pOneStep && t.stepsMoved <= 50);
@@ -168,40 +197,10 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
                     }
                 });
 
-                // If moving a SINGLE token (which we are here, unless it's a pair move logic which is above)
-                // This isValidMove is generally for the "unit" move. 
-                // If we are moving a pair, this check might fail if we don't distinguish?
-                // But pairs CAN capture doubles? User said "single token cannot send doubles".
-                // So if isDoubled is true (moving pair), this restriction might not apply? 
-                // But wait, isValidMove does not know if we *will* move as pair or single yet, it just checks if "token" can move "diceValue".
-                // If "token" is part of a double, and we rolled even, we MIGHT move pair.
-                // We should probably allow the move in isValidMove if it's *possible* to be valid (e.g. as pair).
-                // But here we are checking if *this specific token* moving *this specific value* is valid.
-                // If we move as pair, the "diceValue" passed to isValidMove would be... wait.
-                // In moveToken, we call isValidMove(token, moveValue). 
-                // If moving pair, actual move is moveValue/2. 
-                // We should probably pass the *intended* step count to isValidMove? Or IsValidMove handles the logic?
-                // Currently isValidMove takes `diceValue` (the roll). 
-                // Code: `if (isDoubled && !isSafe) ... if (token.stepsMoved + (diceValue / 2) > 56)` 
-                // So isValidMove KNOWS if it will be a pair move.
-
-                // If it is a pair move (Double on non-safe OR Double on safe + Even roll), then we are moving 2 tokens.
-                // The restriction says "single token cannot...". So Pair moving onto Double is OK? 
-                // Let's assume yes.
-                // So we only block if we are moving a SINGLE token onto an opponent DOUBLE.
-
-                // Am I blocking a Single?
-                const isMovingPair = isDoubled && (!isSafe || (diceValue % 2 === 0)); // Heuristic match with moveToken
-                // Note: moveToken has `if (isDoubled) { if (isSafe) ... else ... }`
-                // Safe spot separation logic means on Safe spot we ALWAYS move Single.
-                // So isMovingPair is only true if isDoubled AND !isSafe. 
-                // (Because if isSafe, tokensToMove = [token] -> Single).
-
-                // Wait, blindly following my previous change: 
-                // "Safe spot: Can move as pair... NO, User requirement: clicking will separate... So default to single move."
-                // So if isSafe, we move Single. 
-                // So Pair move ONLY happens if !isSafe (and Dice is Even).
-
+                const isMovingPair = isDoubled && (!isSafe || (diceValue % 2 === 0));
+                // Note: moveToken has separation logic.
+                // If split permitted (Safe Spot), we split -> Single move.
+                // If not split permitted (Not safe), we move Pair.
                 const actuallyMovingPair = isDoubled && !isSafe && (diceValue % 2 === 0);
 
                 if (!actuallyMovingPair && opponentDoubleAtLand) {
@@ -211,23 +210,8 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         }
 
         // Rule: Single token cannot share place with doubles of same player (No Triples)
-        // Check landing spot for OWN tokens
-        // If moving pair, they land together (form quad? allowed? Usually max 2. User said "single token cannot share place with doubles")
-        // If we move pair, we land on existing tokens?
-
-        const landStepsOwn = token.stepsMoved === -1 ? 0 : token.stepsMoved + diceValue; // Re-calc logic
+        const landStepsOwn = token.stepsMoved === -1 ? 0 : token.stepsMoved + diceValue;
         const ownTokensAtLand = currentTokens.filter(t => t.stepsMoved === landStepsOwn && t.id !== token.id);
-
-        // If we are moving a Pair, we exclude both moving tokens.
-        // Validating "token" (one of them). 
-        // If moving pair, currentTokens has 2 tokens at source. 
-        // Token A moves to target. Token B moves to target.
-        // When updating state, they move. 
-        // Here we simulate the move.
-
-        // Simpler check: If target has >= 2 own tokens (Double), we cannot land there.
-        // Unless we are moving those tokens (which we are not, we are moving TO there).
-        // So just check static count at target.
 
         if (ownTokensAtLand.length >= 2) {
             // Target already has a double. Cannot form Triple.
@@ -235,7 +219,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         }
 
         return true;
-    }, [gameMode, playerData, currentPlayerColor, gameState]);
+    }, [gameMode, playerData, gameState, isTeamMode]);
 
     const nextTurn = useCallback(() => {
         setTurn(prev => (prev + 1) % 4);
@@ -249,9 +233,22 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
     useEffect(() => {
         if (!rolling && !canRoll && diceQueue.length > 0) {
             const currentTokens = gameState[currentPlayerColor];
-            const hasAnyValidMove = diceQueue.some(dice =>
-                currentTokens.some(token => isValidMove(token, dice.value))
-            );
+            const hasAnyValidMove = diceQueue.some(dice => {
+                // Check own tokens
+                const ownValid = currentTokens.some(token => isValidMove(token, dice.value, currentPlayerColor));
+                if (ownValid) return true;
+
+                // Check teammate tokens if Team Mode
+                if (isTeamMode) {
+                    const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+                    const teammateIdx = (currentIdx + 2) % 4;
+                    const teammateColor = PLAYER_ORDER[teammateIdx];
+                    const teammateTokens = gameState[teammateColor];
+                    const teamValid = teammateTokens.some(token => isValidMove(token, dice.value, teammateColor));
+                    if (teamValid) return true;
+                }
+                return false;
+            });
 
             if (!hasAnyValidMove) {
                 console.log("No valid moves available. Skipping turn...");
@@ -259,131 +256,69 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
                 return () => clearTimeout(timer);
             }
         }
-    }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, nextTurn, isValidMove]);
+    }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, nextTurn, isValidMove, isTeamMode]);
 
     // Auto-Move Rule: If only one valid move exists, execute it.
     useEffect(() => {
-        if (!rolling && !canRoll && diceQueue.length === 1 && !selectedDiceId) {
-            const dice = diceQueue[0];
-            const currentTokens = gameState[currentPlayerColor];
-
-            // Find all valid moves for this dice
-            let validMoves = [];
-            currentTokens.forEach(token => {
-                if (isValidMove(token, dice.value)) {
-                    validMoves.push(token.id);
-                }
-            });
-
-            // If exactly one token can move, auto-select and move?
-            // Wait, we need to trigger moveToken. 
-            // But moveToken needs selectedDiceId.
-            // And moveToken is an event handler, safer to trigger selection first?
-            // Or just direct state manipulation? 
-            // Better to effectively "click".
-
-            if (validMoves.length === 1) {
-                // Only one token valid.
-                // Is there ambiguity about Single vs Pair? 
-                // isValidMove returns true if *some* move is possible. 
-                // If it's a double, it might be the *only* moving unit (pair or single).
-                // So validMoves contains ids. 
-                // If I have 2 tokens on same spot (double), both return true? 
-                // If I move one, I move the pair (if pair move). 
-                // So "valid moves" might correspond to "valid distinct moves"?
-                // If validMoves contains 2 IDs but they are the SAME double unit moving as pair, is that 1 move? 
-                // If !isSafe, validMoves will contain both IDs (if valid). 
-                // If I click either, same result. 
-                // So effectively 1 move option. 
-
-                // If I have 1 token at start, roll 6. Only 1 move. 
-
-                // Let's refine "1 valid move".
-                // If validMoves.length === 1 -> Definitely auto move.
-                // If validMoves.length > 1: Check if they are all part of the same Double Unit that MUST move as pair?
-
-                const uniqueOffests = new Set(validMoves.map(id => {
-                    const t = currentTokens.find(ct => ct.id === id);
-                    return t.stepsMoved;
-                }));
-
-                if (uniqueOffests.size === 1) {
-                    // All valid tokens are at same spot.
-                    // Are we forced to move as pair? 
-                    // If !isSafe, yes. 
-                    // If isSafe, we separate. If we separate, does it matter which one? No, they are fungible.
-                    // Moving token A vs token B (same color, same spot) is identical game state.
-                    // So yes, it is "1 unique move".
-
-                    // Execute!
-                    console.log("Auto-moving single option...");
-                    const timeoutId = setTimeout(() => {
-                        // We need to set selectedDiceId first? moveToken checks it.
-                        // But we can't easily sync that in one tick if relying on state.
-                        // Actually moveToken takes tokenId. It expects selectedDiceId to be set.
-                        // We can force it or modify moveToken. 
-                        // Or just sequence it: Select -> Move.
-
-                        setSelectedDiceId(dice.id);
-                        // We need another effect or immediate call? 
-                        // State update is async. 
-                        // But we can just call an internal helper or trust the next render?
-                        // "moveToken" depends on "selectedDiceId". 
-                        // If we set it here, we can't call moveToken immediately. 
-                        // So we wait for next render? 
-                        // Or we modify moveToken to accept diceId optionally?
-
-                        // Hack: Select dice now, then trigger move in another effect? 
-                        // Or just auto-select (which we already do for 1 dice) and then auto-move?
-
-                        // Existing code:
-                        // useEffect(() => { if (diceQueue.length > 0 ... !selectedDiceId ... ) setSelectedDiceId(...) }, ...)
-                        // So dice is already selected? 
-                        // Check the condition: `!selectedDiceId` in `if`.
-                        // If we rely on the existing auto-select, then `selectedDiceId` WILL be set.
-                        // So we should check `if (selectedDiceId ...)` here.
-                    }, 500);
-
-                    return () => clearTimeout(timeoutId);
-                }
-            }
-        }
-    }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, selectedDiceId, isValidMove]);
-
-    // Auto-Move Execution Step (Splitting to ensure state is ready)
-    useEffect(() => {
-        if (!rolling && !canRoll && selectedDiceId) {
+        if (!rolling && !canRoll && diceQueue.length > 0 && selectedDiceId && pendingAutoMoveRef.current !== selectedDiceId) {
             const dice = diceQueue.find(d => d.id === selectedDiceId);
             if (!dice) return;
 
             const currentTokens = gameState[currentPlayerColor];
-            let validTokenIds = [];
+            let validMoves = []; // Objects {id, color}
+
+            // Check Own
             currentTokens.forEach(token => {
-                if (isValidMove(token, dice.value)) {
-                    validTokenIds.push(token.id);
+                if (isValidMove(token, dice.value, currentPlayerColor)) {
+                    validMoves.push({ id: token.id, color: currentPlayerColor, steps: token.stepsMoved });
                 }
             });
 
-            // Check uniqueness of move
-            const uniqueSteps = new Set(validTokenIds.map(id => currentTokens.find(t => t.id === id).stepsMoved));
+            // Check Teammate ONLY IF own collection is empty
+            if (isTeamMode && validMoves.length === 0) {
+                const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+                const teammateIdx = (currentIdx + 2) % 4;
+                const teammateColor = PLAYER_ORDER[teammateIdx];
+                gameState[teammateColor].forEach(token => {
+                    if (isValidMove(token, dice.value, teammateColor)) {
+                        validMoves.push({ id: token.id, color: teammateColor, steps: token.stepsMoved });
+                    }
+                });
+            }
 
-            if (uniqueSteps.size === 1) {
-                // Only one valid SOURCE position. 
-                // Since tokens are identical, this is unique move.
-                const tokenId = validTokenIds[0];
+            // Determine uniqueness
+            if (validMoves.length === 1) {
+                const moveTarget = validMoves[0];
+                console.log("Auto-moving single option...");
 
-                // Execute with delay
-                const timer = setTimeout(() => {
-                    moveToken(tokenId);
+                pendingAutoMoveRef.current = selectedDiceId;
+
+                const timeoutId = setTimeout(() => {
+                    moveToken(moveTarget.id, moveTarget.color);
+                    pendingAutoMoveRef.current = null;
                 }, 500);
-                return () => clearTimeout(timer);
+                return () => clearTimeout(timeoutId);
+            } else if (validMoves.length > 1) {
+                // Check if all valid moves are effectively "the same move" (e.g. splitting any token of a double on a safe spot, or moving pair)
+                // Unique by (Color + Source Step).
+                const uniqueSteps = new Set(validMoves.map(m => `${m.color}-${m.steps}`));
+                if (uniqueSteps.size === 1) {
+                    // All valid tokens are at same spot and same color.
+                    // Just pick the first one.
+                    const moveTarget = validMoves[0];
+                    console.log("Auto-moving unique logical option...");
+
+                    pendingAutoMoveRef.current = selectedDiceId;
+
+                    const timeoutId = setTimeout(() => {
+                        moveToken(moveTarget.id, moveTarget.color);
+                        pendingAutoMoveRef.current = null;
+                    }, 500);
+                    return () => clearTimeout(timeoutId);
+                }
             }
         }
-    }, [selectedDiceId, rolling, canRoll, gameState, currentPlayerColor, diceQueue, isValidMove]); // Careful with deps, moveToken is stable? No, it changes. Add to deps or exclude. moveToken changes on state change. 
-    // If we add moveToken, it might loop? 
-    // moveToken updates state -> triggering this effect again? 
-    // diceQueue changes -> selectedDiceId changes/clears -> effect stops.
-    // So it should be safe.
+    }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, selectedDiceId, isValidMove, isTeamMode]);
 
 
     const rollDice = () => {
@@ -421,7 +356,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
                 const newDice = { id: Date.now() + Math.random(), value: val };
                 setDiceQueue(prev => [...prev, newDice]);
                 setCanRoll(false);
-                // setConsecutiveSixes(0); // We don't reset here because the turn continues for movement. Resets on new turn.
+                // setConsecutiveSixes(0); 
             }
         }, 500);
     };
@@ -434,35 +369,54 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         return SAFE_SPOTS.includes(index);
     };
 
-    const moveToken = (tokenId) => {
+    const moveToken = (tokenId, tokenColor = currentPlayerColor) => {
         if (!selectedDiceId) return;
 
         const diceObj = diceQueue.find(d => d.id === selectedDiceId);
         if (!diceObj) return;
         const moveValue = diceObj.value;
 
-        const tokens = gameState[currentPlayerColor];
+        const tokens = gameState[tokenColor];
         const token = tokens.find(t => t.id === tokenId);
 
-        // Validation
-        if (!isValidMove(token, moveValue)) {
+        // Validation - Pass tokenColor
+        if (!isValidMove(token, moveValue, tokenColor)) {
             console.log("Invalid move");
             return;
+        }
+
+        // Verify Team Permission
+        if (tokenColor !== currentPlayerColor) {
+            if (!isTeamMode) {
+                console.warn("Cannot move opponent token!");
+                return;
+            }
+            const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+            const tokenIdx = PLAYER_ORDER.indexOf(tokenColor);
+            if (Math.abs(currentIdx - tokenIdx) !== 2) {
+                console.warn("Cannot move non-teammate token!");
+                return;
+            }
+
+            // PRIORITY CHECK: Current player should not have valid moves for themselves
+            const anyOwnValid = gameState[currentPlayerColor].some(t => isValidMove(t, moveValue, currentPlayerColor));
+            if (anyOwnValid) {
+                console.warn("Requested teammate move, but current player has valid moves for themselves. Ignoring.");
+                return;
+            }
         }
 
         // Determine Move Type (Single vs Pair)
         const tokensAtSpot = tokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
         const isDoubled = tokensAtSpot.length >= 2;
-        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[currentPlayerColor] + token.stepsMoved) % 52);
+        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52);
 
         let actualMoveSteps = moveValue;
         let tokensToMove = [token];
 
         if (isDoubled) {
             if (isSafe) {
-                // Safe spot allows separation. 
-                // User requirement: "clicking will separate and move a single token"
-                // So default to single move.
+                // Safe spot allows separation -> Single Move
                 actualMoveSteps = moveValue;
                 tokensToMove = [token];
             } else {
@@ -483,17 +437,21 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         let newGameState = { ...gameState };
         let newPlayerData = { ...playerData };
 
-        // Process capture logic (only based on the first token moving, as they move to same spot)
-        // If moving pair, they land together. 
-        // Capture logic needs to be aware of landing spot.
-
         if (newSteps <= 50) {
-            const offset = PATH_OFFSETS[currentPlayerColor];
+            const offset = PATH_OFFSETS[tokenColor];
             const globalPathIndex = (offset + newSteps) % 52;
 
             if (!isGloballySafe(globalPathIndex)) {
                 PLAYER_ORDER.forEach(pColor => {
-                    if (pColor === currentPlayerColor) return;
+                    if (pColor === tokenColor) return;
+
+                    // Team Mode: Do not capture teammate?
+                    if (isTeamMode) {
+                        const idx1 = PLAYER_ORDER.indexOf(tokenColor);
+                        const idx2 = PLAYER_ORDER.indexOf(pColor);
+                        if (Math.abs(idx1 - idx2) === 2) return; // No friendly fire
+                    }
+
                     // Check opponets at this spot
                     const opponentsAtSpot = newGameState[pColor].filter(oppToken => {
                         if (oppToken.stepsMoved === -1 || oppToken.stepsMoved > 50) return false;
@@ -503,20 +461,15 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
 
                     if (opponentsAtSpot.length > 0) {
                         // Capture!
-                        // Defense in Depth: Check if we are allowed to capture?
-                        // If Single vs Double -> NO CAPTURE (Illegal move should have been blocked, but if here, prevent state corruption)
-
-                        // Check if we are moving a pair?
-                        // tokensToMove has moving tokens.
                         const isAttackerDouble = tokensToMove.length >= 2;
                         const isDefenderDouble = opponentsAtSpot.length >= 2;
 
                         if (!isAttackerDouble && isDefenderDouble) {
                             console.warn("Illegal capture attempt blocked: Single trying to capture Double.");
-                            // Do NOT capture. Proceed without modifying opponent state.
                             captureOccurred = false;
                         } else {
                             captureOccurred = true;
+                            // Credit the CURRENT PLAYER (Caller) for the capture
                             newPlayerData[currentPlayerColor] = { hasCaptured: true };
 
                             // Reset opponents
@@ -533,7 +486,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         }
 
         // Update moved tokens
-        newGameState[currentPlayerColor] = newGameState[currentPlayerColor].map(t => {
+        newGameState[tokenColor] = newGameState[tokenColor].map(t => {
             if (tokensToMove.some(tm => tm.id === t.id)) {
                 return { ...t, stepsMoved: newSteps };
             }
@@ -562,21 +515,28 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC) => {
         }
     };
 
-    // Calculate Valid Moves for Highlighting
-    // If we have a selected dice, we highlight tokens valid for THAT dice.
-    // If not, we don't highlight? Or we highlight for unique dice? 
-    // Current design: User must select dice if multiple. If single, auto-selected. 
-    // So selectedDiceId is usually set when it matters.
-
     const validTokenIds = [];
     if (selectedDiceId) {
         const dice = diceQueue.find(d => d.id === selectedDiceId);
         if (dice) {
+            // Check Own
             gameState[currentPlayerColor].forEach(token => {
-                if (isValidMove(token, dice.value)) {
-                    validTokenIds.push(token.id);
+                if (isValidMove(token, dice.value, currentPlayerColor)) {
+                    validTokenIds.push(`${currentPlayerColor}-${token.id}`);
                 }
             });
+
+            // Check Teammate ONLY IF current player has NO valid moves for this dice
+            if (isTeamMode && validTokenIds.length === 0) {
+                const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+                const teammateIdx = (currentIdx + 2) % 4;
+                const teammateColor = PLAYER_ORDER[teammateIdx];
+                gameState[teammateColor].forEach(token => {
+                    if (isValidMove(token, dice.value, teammateColor)) {
+                        validTokenIds.push(`${teammateColor}-${token.id}`);
+                    }
+                });
+            }
         }
     }
 

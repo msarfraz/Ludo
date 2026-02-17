@@ -6,10 +6,20 @@ import { PATH_COORDINATES, HOME_PATHS } from '../constants/boardData';
 import { SAFE_SPOTS as SAFE_SPOTS_INDICES } from '../constants/gameConstants';
 import { PLAYER_ORDER } from '../constants/gameConstants';
 
-const LudoBoard = ({ gameState, onTokenClick, currentPlayer, diceProps, validTokens = [] }) => {
+const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, diceProps, validTokens = [] }) => {
+    // ... logic ...
+    const isTeammateColor = (color) => {
+        if (!isTeamMode) return false;
+        const currIdx = PLAYER_ORDER.indexOf(currentPlayer);
+        const colorIdx = PLAYER_ORDER.indexOf(color);
+        return Math.abs(currIdx - colorIdx) === 2;
+    };
+
     // Visual State for Animation
     const [visualState, setVisualState] = useState(gameState);
     const animationRef = useRef(null);
+    // ... skip animation useEffect for now ...
+
 
     // Sync Visual State with Logical State (with Animation)
     useEffect(() => {
@@ -109,7 +119,7 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, diceProps, validTok
         visualState[color].forEach(token => {
             const style = getTokenStyle(color, token);
             if (style.location === 'BOARD') {
-                const isValid = color === currentPlayer && validTokens.includes(token.id);
+                const isValid = validTokens.includes(`${color}-${token.id}`);
                 boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid });
             }
         });
@@ -132,12 +142,14 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, diceProps, validTok
     }).filter(Boolean);
 
     const renderHomeBase = (color, cssClass) => {
-        const isActive = currentPlayer === color;
-        // Filter dice for this player? No, diceQueue is global for current turn.
+        const isCurrent = currentPlayer === color;
+        const isTeam = isTeammateColor(color);
 
         return (
-            <div className={`home-base ${cssClass} ${isActive ? 'active-turn' : ''}`}>
-                {isActive && (
+            <div className={`home-base ${cssClass} ${isCurrent ? 'active-turn' : ''} ${isTeam ? 'teammate-turn' : ''}`}>
+                {isCurrent && (
+
+
                     <div className="internal-dice-container" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
                         {/* Render Dice Queue or Default Placeholder if empty but canRoll */}
                         {diceProps.queue.length > 0 ? (
@@ -183,7 +195,7 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, diceProps, validTok
                 {/* Render Home Tokens (Use Visual State) */}
                 {visualState[color].map(t => {
                     if (t.stepsMoved !== -1) return null;
-                    const isValid = color === currentPlayer && validTokens.includes(t.id);
+                    const isValid = validTokens.includes(`${color}-${t.id}`);
                     return (
                         <div key={t.id} className="token-spot">
                             <Token color={color} onClick={() => onTokenClick(color, t.id)} isValid={isValid} />

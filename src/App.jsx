@@ -6,20 +6,25 @@ import { PLAYER_ORDER, GAME_MODES } from './constants/gameConstants';
 import './index.css';
 
 function App() {
-  const [gameMode, setGameMode] = useState(null);
+  const [gameConfig, setGameConfig] = useState(null);
+
+  const handleStart = (mode, isTeamMode = false) => {
+    setGameConfig({ mode, isTeamMode });
+  };
 
   return (
     <div className="app-root">
-      {!gameMode ? (
-        <StartScreen onStart={setGameMode} />
+      {!gameConfig ? (
+        <StartScreen onStart={handleStart} />
       ) : (
-        <GameInstance mode={gameMode} onExit={() => setGameMode(null)} />
+        <GameInstance config={gameConfig} onExit={() => setGameConfig(null)} />
       )}
     </div>
   );
 }
 
-const GameInstance = ({ mode, onExit }) => {
+const GameInstance = ({ config, onExit }) => {
+  const { mode, isTeamMode } = config;
   const {
     gameState,
     currentPlayerColor,
@@ -32,11 +37,28 @@ const GameInstance = ({ mode, onExit }) => {
     moveToken,
     playerData,
     validTokenIds
-  } = useLudoGame(mode);
+  } = useLudoGame(mode, isTeamMode);
 
   const handleTokenClick = (color, id) => {
-    if (color !== currentPlayerColor) return;
-    moveToken(id);
+    // Team Logic:
+    // Green (0) & Blue (2)
+    // Yellow (1) & Red (3)
+    // Indexes in PLAYER_ORDER: ['green', 'yellow', 'blue', 'red']
+
+    const isCurrent = color === currentPlayerColor;
+    let isTeammate = false;
+
+    if (isTeamMode) {
+      const currentIndex = PLAYER_ORDER.indexOf(currentPlayerColor);
+      const clickedIndex = PLAYER_ORDER.indexOf(color);
+      // Teams are (0,2) and (1,3). Difference is 2.
+      if (Math.abs(currentIndex - clickedIndex) === 2) {
+        isTeammate = true;
+      }
+    }
+
+    if (!isCurrent && !isTeammate) return;
+    moveToken(id, color);
   };
 
   return (
@@ -47,6 +69,7 @@ const GameInstance = ({ mode, onExit }) => {
         </button>
         <h1 style={{ margin: 0, fontSize: '1.2rem' }}>
           Ludo {mode === GAME_MODES.MASTER ? <span style={{ color: '#ea4335' }}>MASTER</span> : <span style={{ color: '#34a853' }}>CLASSIC</span>}
+          {isTeamMode && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: '#4285f4', padding: '2px 6px', borderRadius: '4px' }}>TEAM</span>}
         </h1>
         <div style={{ fontSize: '0.8rem', textAlign: 'right', width: '150px' }}>
           {mode === GAME_MODES.MASTER && (
@@ -61,6 +84,7 @@ const GameInstance = ({ mode, onExit }) => {
         gameState={gameState}
         onTokenClick={handleTokenClick}
         currentPlayer={currentPlayerColor}
+        isTeamMode={isTeamMode}
         diceProps={{
           value: 0, // Legacy support
           queue: diceQueue,
