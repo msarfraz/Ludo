@@ -13,14 +13,14 @@ const PATH_OFFSETS = {
     [PLAYERS.RED]: 39
 };
 
-export const getBoardCoordinates = (color, stepsMoved) => {
+export const getBoardCoordinates = (color, stepsMoved, isLocked = false) => {
     // stepsMoved: -1 (Home Logic handled by component usually, but let's see), 
     // 0 (Start Position), ... 50 (End of cycle), 51-56 (Home Path)
 
     if (stepsMoved === -1) return null; // Component handles Home position styling
 
     // Home Path
-    if (stepsMoved > 50) {
+    if (stepsMoved > 50 && !isLocked) {
         const homePathIndex = stepsMoved - 51;
         const path = HOME_PATHS[color];
         if (path && homePathIndex < path.length) {

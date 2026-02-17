@@ -4,9 +4,9 @@ import Dice from './Dice';
 import { getBoardCoordinates } from '../utils/boardUtils';
 import { PATH_COORDINATES, HOME_PATHS } from '../constants/boardData';
 import { SAFE_SPOTS as SAFE_SPOTS_INDICES } from '../constants/gameConstants';
-import { PLAYER_ORDER } from '../constants/gameConstants';
+import { PLAYER_ORDER, GAME_MODES } from '../constants/gameConstants';
 
-const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, diceProps, validTokens = [] }) => {
+const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, gameMode, playerData, diceProps, validTokens = [] }) => {
     // ... logic ...
     const isTeammateColor = (color) => {
         if (!isTeamMode) return false;
@@ -104,7 +104,8 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, dicePro
         } else if (stepsMoved === 56) {
             return { location: 'GOAL' };
         } else {
-            const coords = getBoardCoordinates(color, stepsMoved);
+            const isLocked = gameMode === GAME_MODES.MASTER && !playerData[color]?.hasCaptured;
+            const coords = getBoardCoordinates(color, stepsMoved, isLocked);
             if (coords) {
                 return { location: 'BOARD', r: coords[0] + 1, c: coords[1] + 1 }; // 1-indexed grid
             }
@@ -216,10 +217,13 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, dicePro
 
             {/* Center */}
             <div className="center-home">
-                <div className="tri-green"></div>
-                <div className="tri-yellow"></div>
-                <div className="tri-blue"></div>
-                <div className="tri-red"></div>
+                <div className="quad-green"></div>
+                <div className="quad-yellow"></div>
+                <div className="quad-red"></div>
+                <div className="quad-blue"></div>
+                <div className="center-circle">
+                    <div className="center-dot"></div>
+                </div>
                 {/* Goal Tokens - could render here in future */}
             </div>
 
@@ -241,21 +245,41 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, dicePro
 
             {/* Render Home Paths with Borders */}
             {/* Green */}
-            {HOME_PATHS.green.map((coords, i) => (
-                <div key={`hp-g-${i}`} className="cell" style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-green)' }}></div>
-            ))}
+            {HOME_PATHS.green.map((coords, i) => {
+                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['green']?.hasCaptured;
+                return (
+                    <div key={`hp-g-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-green)' }}>
+                        {showBarrier && <div className="barrier-icon">🔒</div>}
+                    </div>
+                );
+            })}
             {/* Yellow */}
-            {HOME_PATHS.yellow.map((coords, i) => (
-                <div key={`hp-y-${i}`} className="cell" style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-yellow)' }}></div>
-            ))}
+            {HOME_PATHS.yellow.map((coords, i) => {
+                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['yellow']?.hasCaptured;
+                return (
+                    <div key={`hp-y-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-yellow)' }}>
+                        {showBarrier && <div className="barrier-icon">🔒</div>}
+                    </div>
+                );
+            })}
             {/* Blue */}
-            {HOME_PATHS.blue.map((coords, i) => (
-                <div key={`hp-b-${i}`} className="cell" style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-blue)' }}></div>
-            ))}
+            {HOME_PATHS.blue.map((coords, i) => {
+                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['blue']?.hasCaptured;
+                return (
+                    <div key={`hp-b-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-blue)' }}>
+                        {showBarrier && <div className="barrier-icon">🔒</div>}
+                    </div>
+                );
+            })}
             {/* Red */}
-            {HOME_PATHS.red.map((coords, i) => (
-                <div key={`hp-r-${i}`} className="cell" style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-red)' }}></div>
-            ))}
+            {HOME_PATHS.red.map((coords, i) => {
+                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['red']?.hasCaptured;
+                return (
+                    <div key={`hp-r-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-red)' }}>
+                        {showBarrier && <div className="barrier-icon">🔒</div>}
+                    </div>
+                );
+            })}
 
 
             {/* Render Active Tokens on Board */}

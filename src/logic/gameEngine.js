@@ -50,16 +50,15 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
     const isValidMove = useCallback((token, diceValue, tokenColor = currentPlayerColor) => {
         if (token.stepsMoved === -1 && diceValue !== 6) return false;
-        if (token.stepsMoved + diceValue > 56) return false;
+        const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[tokenColor]?.hasCaptured;
 
-        // Master Mode Check - Check CAPTURE status of the TOKEN OWNER
-        if (gameMode === GAME_MODES.MASTER && !playerData[tokenColor].hasCaptured && (token.stepsMoved + diceValue > 50)) {
-            return false;
-        }
+        if (!isMasterLocked && token.stepsMoved + diceValue > 56) return false;
 
         // Double Token Checks
         const currentTokens = gameState[tokenColor];
-        const tokensAtSpot = currentTokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
+        // If locked, main path extends to step 51
+        const mainPathLimit = isMasterLocked ? 51 : 50;
+        const tokensAtSpot = currentTokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved <= mainPathLimit);
         const isDoubled = tokensAtSpot.length >= 2;
         const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52);
 
@@ -132,7 +131,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
         for (let step = startStep; step < endStep; step++) {
             // Check if there is a double at this step
-            if (step > 50) continue; // Home stretch usually no blocking? or implies safe?
+            if (step > 50 && !isMasterLocked) continue; // Home stretch usually no blocking
 
             const offset = PATH_OFFSETS[tokenColor];
             const globalIndex = (offset + step) % 52;
@@ -159,7 +158,11 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 const pOffset = PATH_OFFSETS[pColor];
                 const pRelativeStep = (globalIndex - pOffset + 52) % 52;
 
-                const tokensAtStep = gameState[pColor].filter(t => t.stepsMoved === pRelativeStep && t.stepsMoved <= 50);
+                const tokensAtStep = gameState[pColor].filter(t => {
+                    const isOpponentLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
+                    const maxStep = isOpponentLocked ? 51 : 50;
+                    return t.stepsMoved === pRelativeStep && t.stepsMoved <= maxStep;
+                });
                 if (tokensAtStep.length >= 2) {
                     doubleFound = true; // Found a double
                 }
@@ -173,9 +176,12 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         // Capture Restriction (Rule: Single token cannot capture an opponent Double)
         // Check landing spot
         const landSteps = token.stepsMoved === -1 ? 0 : token.stepsMoved + diceValue;
-        if (landSteps <= 50) {
+        // Correct landing for lock:
+        const actualLandSteps = isMasterLocked && landSteps > 50 ? (landSteps % 52) : landSteps;
+
+        if (actualLandSteps <= 50 || (isMasterLocked && actualLandSteps === 51)) {
             const offset = PATH_OFFSETS[tokenColor];
-            const globalLandIndex = (offset + landSteps) % 52;
+            const globalLandIndex = (offset + actualLandSteps) % 52;
             if (!isGloballySafe(globalLandIndex)) {
                 // Check neighbors
                 let opponentDoubleAtLand = false;
@@ -191,7 +197,9 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
                     const pOffset = PATH_OFFSETS[pColor];
                     const pOneStep = (globalLandIndex - pOffset + 52) % 52;
-                    const oppTokens = gameState[pColor].filter(t => t.stepsMoved === pOneStep && t.stepsMoved <= 50);
+                    const isOpponentLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
+                    const maxStep = isOpponentLocked ? 51 : 50;
+                    const oppTokens = gameState[pColor].filter(t => t.stepsMoved === pOneStep && t.stepsMoved <= maxStep);
                     if (oppTokens.length >= 2) {
                         opponentDoubleAtLand = true;
                     }
@@ -430,14 +438,19 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             }
         }
 
-        const newSteps = (token.stepsMoved === -1) ? 0 : token.stepsMoved + actualMoveSteps;
+        const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[tokenColor]?.hasCaptured;
+        let newSteps = (token.stepsMoved === -1) ? 0 : token.stepsMoved + actualMoveSteps;
+
+        if (isMasterLocked && newSteps > 50) {
+            newSteps = newSteps % 52; // Wrap around the 52-cell cycle
+        }
 
         // Apply Move
         let captureOccurred = false;
         let newGameState = { ...gameState };
         let newPlayerData = { ...playerData };
 
-        if (newSteps <= 50) {
+        if (newSteps <= 50 || (isMasterLocked && newSteps === 51)) {
             const offset = PATH_OFFSETS[tokenColor];
             const globalPathIndex = (offset + newSteps) % 52;
 
@@ -454,7 +467,9 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
                     // Check opponets at this spot
                     const opponentsAtSpot = newGameState[pColor].filter(oppToken => {
-                        if (oppToken.stepsMoved === -1 || oppToken.stepsMoved > 50) return false;
+                        const isOpponentLocked = gameMode === GAME_MODES.MASTER && !newPlayerData[pColor]?.hasCaptured;
+                        const maxStep = isOpponentLocked ? 51 : 50;
+                        if (oppToken.stepsMoved === -1 || oppToken.stepsMoved > maxStep) return false;
                         const oppOffset = PATH_OFFSETS[pColor];
                         return ((oppOffset + oppToken.stepsMoved) % 52) === globalPathIndex;
                     });
@@ -469,8 +484,8 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                             captureOccurred = false;
                         } else {
                             captureOccurred = true;
-                            // Credit the CURRENT PLAYER (Caller) for the capture
-                            newPlayerData[currentPlayerColor] = { hasCaptured: true };
+                            // Credit the TOKEN OWNER for the capture
+                            newPlayerData[tokenColor] = { hasCaptured: true };
 
                             // Reset opponents
                             newGameState[pColor] = newGameState[pColor].map(oppToken => {

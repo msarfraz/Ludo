@@ -85,6 +85,8 @@ const GameInstance = ({ config, onExit }) => {
         onTokenClick={handleTokenClick}
         currentPlayer={currentPlayerColor}
         isTeamMode={isTeamMode}
+        gameMode={mode}
+        playerData={playerData}
         diceProps={{
           value: 0, // Legacy support
           queue: diceQueue,
