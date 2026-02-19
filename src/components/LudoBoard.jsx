@@ -148,58 +148,20 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, gameMod
 
         return (
             <div className={`home-base ${cssClass} ${isCurrent ? 'active-turn' : ''} ${isTeam ? 'teammate-turn' : ''}`}>
-                {isCurrent && (
+                {/* Render Home Token Sockets (Always 4) */}
+                {[0, 1, 2, 3].map(id => {
+                    const tokenAtHome = visualState[color].find(t => t.id === id && t.stepsMoved === -1);
+                    const isValid = tokenAtHome ? validTokens.includes(`${color}-${id}`) : false;
 
-
-                    <div className="internal-dice-container" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
-                        {/* Render Dice Queue or Default Placeholder if empty but canRoll */}
-                        {diceProps.queue.length > 0 ? (
-                            diceProps.queue.map(d => (
-                                <div
-                                    key={d.id}
-                                    onClick={() => diceProps.onSelect(d.id)}
-                                    style={{
-                                        transform: diceProps.selectedId === d.id ? 'scale(1.2)' : 'scale(1)',
-                                        border: diceProps.selectedId === d.id ? '3px solid #ffeb3b' : 'none',
-                                        borderRadius: '12px',
-                                        transition: 'all 0.2s',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <Dice value={d.value} disabled={false} rolling={false} onRoll={() => { }} />
-                                    {/* Note: onRoll is empty because clicking dice selects it. The main roll button handles rolling? WAt. 
-                                         Wait, we need a way to ROLL. 
-                                         Usually clicking the dice ROLLS it.
-                                         If queue is empty, click to roll.
-                                         If queue has items, click to select.
-                                         But we support stacking. So if 6 is rolled, we might want to click to roll AGAIN.
-                                     */}
-                                </div>
-                            ))
-                        ) : (
-                            // No dice yet, show placeholder to roll
-                            <Dice {...diceProps} />
-                        )}
-
-                        {/* If canRoll is true, and we have dice, we render an EXTRA placeholder to allow rolling again? or just a button? 
-                            Let's keep it simple: If can roll, always show a "Roll" button or a placeholder dice?
-                            Let's append a "Roll" button if canRoll is true and queue > 0.
-                         */}
-                        {diceProps.canRoll && diceProps.queue.length > 0 && (
-                            <div onClick={diceProps.onRoll} style={{ cursor: 'pointer', opacity: 0.8, transform: 'scale(0.8)' }}>
-                                <Dice value={0} disabled={false} rolling={diceProps.rolling} />
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Render Home Tokens (Use Visual State) */}
-                {visualState[color].map(t => {
-                    if (t.stepsMoved !== -1) return null;
-                    const isValid = validTokens.includes(`${color}-${t.id}`);
                     return (
-                        <div key={t.id} className="token-spot">
-                            <Token color={color} onClick={() => onTokenClick(color, t.id)} isValid={isValid} />
+                        <div key={`spot-${color}-${id}`} className="token-spot">
+                            {tokenAtHome && (
+                                <Token
+                                    color={color}
+                                    onClick={() => onTokenClick(color, id)}
+                                    isValid={isValid}
+                                />
+                            )}
                         </div>
                     );
                 })}
@@ -207,120 +169,172 @@ const LudoBoard = ({ gameState, onTokenClick, currentPlayer, isTeamMode, gameMod
         );
     };
 
-    return (
-        <div className="ludo-board">
-            {/* Render Base Structure */}
-            {renderHomeBase('green', 'home-green')}
-            {renderHomeBase('yellow', 'home-yellow')}
-            {renderHomeBase('blue', 'home-blue')}
-            {renderHomeBase('red', 'home-red')}
+    const renderExternalTray = (playerColor) => {
+        const isActive = currentPlayer === playerColor;
+        if (!isActive) return null;
 
-            {/* Center */}
-            <div className="center-home">
-                <div className="quad-green"></div>
-                <div className="quad-yellow"></div>
-                <div className="quad-red"></div>
-                <div className="quad-blue"></div>
-                <div className="center-circle">
-                    <div className="center-dot"></div>
-                </div>
-                {/* Goal Tokens - could render here in future */}
+        const isTop = playerColor === 'green' || playerColor === 'yellow';
+        const trayClass = isTop ? 'top-tray-area' : 'bottom-tray-area';
+
+        return (
+            <div className={`external-tray-container ${trayClass} active-${playerColor} ${isActive ? 'active' : ''}`}>
+
+                {diceProps.canRoll && (
+                    <Dice
+                        value={diceProps.queue.length > 0 ? diceProps.queue[diceProps.queue.length - 1].value : 0}
+                        onRoll={diceProps.onRoll}
+                        rolling={diceProps.rolling}
+                        disabled={!diceProps.canRoll}
+                        size={48}
+                    />
+                )}
+
+                {diceProps.queue.length > 0 && (
+                    <div className="stacked-rolls-container">
+                        {diceProps.queue.map(d => (
+                            <div
+                                key={d.id}
+                                className={`stacked-roll-item color-gray ${diceProps.selectedId === d.id ? 'selected' : ''} ${diceProps.canRoll ? 'disabled' : ''}`}
+                                onClick={() => diceProps.onSelect(d.id)}
+                            >
+                                <Dice value={d.value} size={32} />
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
+        );
+    };
 
-            {/* Render ALL Main Path Cells (0-51) */}
-            {PATH_COORDINATES.map((coords, idx) => {
-                const isSafe = SAFE_SPOTS_INDICES.includes(idx);
-                // Check if this cell is a safe spot to add the icon class
-                // But we want ALL cells to have border, so we render a .cell for each
-                return (
-                    <div
-                        key={`path-${idx}`}
-                        className={`cell ${isSafe ? 'safe-spot' : ''}`}
-                        style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1 }}
-                    >
-                        {/* Content like stars handles via CSS class */}
-                    </div>
-                );
-            })}
+    return (
+        <div className="ludo-board-wrapper">
+            <div className="ludo-board">
+                {/* External Trays */}
+                {renderExternalTray(currentPlayer)}
 
-            {/* Render Home Paths with Borders */}
-            {/* Green */}
-            {HOME_PATHS.green.map((coords, i) => {
-                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['green']?.hasCaptured;
-                return (
-                    <div key={`hp-g-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-green)' }}>
-                        {showBarrier && <div className="barrier-icon">🔒</div>}
-                    </div>
-                );
-            })}
-            {/* Yellow */}
-            {HOME_PATHS.yellow.map((coords, i) => {
-                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['yellow']?.hasCaptured;
-                return (
-                    <div key={`hp-y-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-yellow)' }}>
-                        {showBarrier && <div className="barrier-icon">🔒</div>}
-                    </div>
-                );
-            })}
-            {/* Blue */}
-            {HOME_PATHS.blue.map((coords, i) => {
-                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['blue']?.hasCaptured;
-                return (
-                    <div key={`hp-b-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-blue)' }}>
-                        {showBarrier && <div className="barrier-icon">🔒</div>}
-                    </div>
-                );
-            })}
-            {/* Red */}
-            {HOME_PATHS.red.map((coords, i) => {
-                const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['red']?.hasCaptured;
-                return (
-                    <div key={`hp-r-${i}`} className={`cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, background: 'var(--color-red)' }}>
-                        {showBarrier && <div className="barrier-icon">🔒</div>}
-                    </div>
-                );
-            })}
+                {/* Render Houses */}
+                {renderHomeBase('green', 'home-green')}
+                {renderHomeBase('yellow', 'home-yellow')}
+                {renderHomeBase('red', 'home-red')}
+                {renderHomeBase('blue', 'home-blue')}
 
+                {/* Center */}
+                <div className="center-home">
+                    <div className="quad-green"></div>
+                    <div className="quad-yellow"></div>
+                    <div className="quad-red"></div>
+                    <div className="quad-blue"></div>
+                    <div className="center-circle">
+                        <div className="center-dot"></div>
+                    </div>
+                    {/* Goal Tokens - could render here in future */}
+                </div>
 
-            {/* Render Active Tokens on Board */}
-            {boardTokens.map((t, i) => {
-                const isCurrent = t.color === currentPlayer;
-                const overlaps = boardTokens.filter(ot => ot.r === t.r && ot.c === t.c);
-                const offsetIdx = overlaps.findIndex(ot => ot.color === t.color && ot.id === t.id);
-                const scale = overlaps.length > 1 ? 0.7 : 1;
-                const offsetX = overlaps.length > 1 ? (offsetIdx % 2) * 20 - 10 : 0;
-                const offsetY = overlaps.length > 1 ? Math.floor(offsetIdx / 2) * 20 - 10 : 0;
+                {/* Render ALL Main Path Cells (0-51) */}
+                {PATH_COORDINATES.map((coords, idx) => {
+                    const isSafe = SAFE_SPOTS_INDICES.includes(idx);
+                    let safeColor = null;
+                    if (isSafe) {
+                        if (idx <= 8) safeColor = 'var(--color-green)';
+                        else if (idx <= 21) safeColor = 'var(--color-yellow)';
+                        else if (idx <= 34) safeColor = 'var(--color-blue)';
+                        else safeColor = 'var(--color-red)';
+                    }
 
-                return (
-                    <div
-                        key={`${t.color}-${t.id}`}
-                        style={{
-                            gridRow: t.r,
-                            gridColumn: t.c,
-                            position: 'relative',
-                            width: '100%',
-                            height: '100%',
-                            pointerEvents: 'none',
-                            transition: 'grid-row 0.4s ease-out, grid-column 0.4s ease-out' // Smooth board movement
-                        }}
-                    >
-                        <div style={{
-                            position: 'absolute',
-                            width: '100%',
-                            height: '100%',
-                            transform: `scale(${scale}) translate(${offsetX}%, ${offsetY}%)`,
-                            pointerEvents: 'auto'
-                        }}>
-                            <Token
-                                color={t.color}
-                                onClick={() => onTokenClick(t.color, t.id)}
-                                animate={isCurrent}
-                                isValid={t.isValid}
-                            />
+                    return (
+                        <div
+                            key={`path-${idx}`}
+                            className={`cell ${isSafe ? 'safe-spot' : ''}`}
+                            style={{
+                                gridRow: coords[0] + 1,
+                                gridColumn: coords[1] + 1,
+                                backgroundColor: safeColor || 'transparent'
+                            }}
+                        >
+                            {/* Content like stars handles via CSS class */}
                         </div>
-                    </div>
-                );
-            })}
+                    );
+                })}
+
+                {/* Render Home Paths with Borders */}
+                {/* Green */}
+                {HOME_PATHS.green.map((coords, i) => {
+                    const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['green']?.hasCaptured;
+                    return (
+                        <div key={`hp-g-${i}`} className={`cell home-safe-cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, backgroundColor: 'var(--color-green)' }}>
+                            {showBarrier && <div className="barrier-icon">🔒</div>}
+                        </div>
+                    );
+                })}
+                {/* Yellow */}
+                {HOME_PATHS.yellow.map((coords, i) => {
+                    const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['yellow']?.hasCaptured;
+                    return (
+                        <div key={`hp-y-${i}`} className={`cell home-safe-cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, backgroundColor: 'var(--color-yellow)' }}>
+                            {showBarrier && <div className="barrier-icon">🔒</div>}
+                        </div>
+                    );
+                })}
+                {/* Blue */}
+                {HOME_PATHS.blue.map((coords, i) => {
+                    const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['blue']?.hasCaptured;
+                    return (
+                        <div key={`hp-b-${i}`} className={`cell home-safe-cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, backgroundColor: 'var(--color-blue)' }}>
+                            {showBarrier && <div className="barrier-icon">🔒</div>}
+                        </div>
+                    );
+                })}
+                {/* Red */}
+                {HOME_PATHS.red.map((coords, i) => {
+                    const showBarrier = i === 0 && gameMode === GAME_MODES.MASTER && !playerData['red']?.hasCaptured;
+                    return (
+                        <div key={`hp-r-${i}`} className={`cell home-safe-cell ${showBarrier ? 'home-barrier' : ''}`} style={{ gridRow: coords[0] + 1, gridColumn: coords[1] + 1, backgroundColor: 'var(--color-red)' }}>
+                            {showBarrier && <div className="barrier-icon">🔒</div>}
+                        </div>
+                    );
+                })}
+
+
+                {/* Render Active Tokens on Board */}
+                {boardTokens.map((t, i) => {
+                    const isCurrent = t.color === currentPlayer;
+                    const overlaps = boardTokens.filter(ot => ot.r === t.r && ot.c === t.c);
+                    const offsetIdx = overlaps.findIndex(ot => ot.color === t.color && ot.id === t.id);
+                    const scale = overlaps.length > 1 ? 0.7 : 1;
+                    const offsetX = overlaps.length > 1 ? (offsetIdx % 2) * 20 - 10 : 0;
+                    const offsetY = overlaps.length > 1 ? Math.floor(offsetIdx / 2) * 20 - 10 : 0;
+
+                    return (
+                        <div
+                            key={`${t.color}-${t.id}`}
+                            style={{
+                                gridRow: t.r,
+                                gridColumn: t.c,
+                                position: 'relative',
+                                width: '100%',
+                                height: '100%',
+                                pointerEvents: 'none',
+                                transition: 'grid-row 0.4s ease-out, grid-column 0.4s ease-out' // Smooth board movement
+                            }}
+                        >
+                            <div style={{
+                                position: 'absolute',
+                                width: '100%',
+                                height: '100%',
+                                transform: `scale(${scale}) translate(${offsetX}%, ${offsetY}%)`,
+                                pointerEvents: 'auto'
+                            }}>
+                                <Token
+                                    color={t.color}
+                                    onClick={() => onTokenClick(t.color, t.id)}
+                                    animate={isCurrent}
+                                    isValid={t.isValid}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 };

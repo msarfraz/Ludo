@@ -68,7 +68,7 @@ export const PATH_COORDINATES = [
 
 // HOME PATHS (The final stretch into the center)
 export const HOME_PATHS = {
-    green: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]], // Wait, Green home run is horizontal middle row usually? 
+    green: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5]],
     // Green starts left, goes right. Home run is Row 7, Cols 1-6? 
     // Yes. (7,0) is the turn cell. (7,1)-(7,5) are colored. (7,6) is the final spot/triangle? No triangle is usually center.
     // Let's outline 6 cells leading to center.

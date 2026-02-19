@@ -1,27 +1,30 @@
 import React from 'react';
 import './../index.css';
 
+import marioImg from '../assets/tokens/mario.png';
+import luigiImg from '../assets/tokens/luigi.png';
+import warioImg from '../assets/tokens/wario.png';
+import koopaImg from '../assets/tokens/koopa.png';
+
 const Token = ({ color, onClick, isMobile, animate, isValid }) => {
+    const assetMap = {
+        red: marioImg,
+        green: luigiImg,
+        yellow: warioImg,
+        blue: koopaImg
+    };
+
     return (
         <div
             className={`token ${color} ${animate ? 'animate-bounce' : ''} ${isValid ? 'highlight-valid' : ''}`}
             onClick={onClick}
-            style={{
-                position: 'absolute',
-                top: '10%',
-                left: '10%',
-                width: '80%',
-                height: '80%'
-            }}
         >
-            <div className="token-inner" style={{
-                width: '70%',
-                height: '70%',
-                borderRadius: '50%',
-                border: '1px solid rgba(0,0,0,0.2)',
-                margin: '15% auto',
-                background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), transparent)'
-            }}></div>
+            <img
+                src={assetMap[color]}
+                alt={`${color} token`}
+                className="token-character"
+            />
+            <div className="token-inner"></div>
         </div>
     );
 };

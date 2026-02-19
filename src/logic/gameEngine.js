@@ -260,7 +260,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
             if (!hasAnyValidMove) {
                 console.log("No valid moves available. Skipping turn...");
-                const timer = setTimeout(nextTurn, 1000);
+                const timer = setTimeout(nextTurn, 2000);
                 return () => clearTimeout(timer);
             }
         }
@@ -332,6 +332,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     const rollDice = () => {
         if (!canRoll) return;
         setRolling(true);
+        setSelectedDiceId(null); // Clear selection when rolling more
         playDiceRollSound();
 
         setTimeout(() => {
@@ -348,6 +349,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 if (newCount === 3) {
                     console.log("Three 6s in a row! Turn forfeited.");
                     setDiceQueue([]); // Clear everything
+                    setSelectedDiceId(null);
                     setConsecutiveSixes(0);
                     setCanRoll(false);
                     setTimeout(nextTurn, 1000);
@@ -364,12 +366,17 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 const newDice = { id: Date.now() + Math.random(), value: val };
                 setDiceQueue(prev => [...prev, newDice]);
                 setCanRoll(false);
-                // setConsecutiveSixes(0); 
+                setConsecutiveSixes(0);
             }
-        }, 500);
+        }, 600);
     };
 
     const selectDice = (id) => {
+        // User requirement: disable selection until all rolls are done (canRoll is false)
+        if (canRoll) {
+            console.log("Finish rolling first!");
+            return;
+        }
         setSelectedDiceId(id);
     };
 
