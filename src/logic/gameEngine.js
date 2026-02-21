@@ -15,8 +15,18 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     const [selectedDiceId, setSelectedDiceId] = useState(null);
     const [rolling, setRolling] = useState(false);
     const [canRoll, setCanRoll] = useState(true);
+    const [lastRollValue, setLastRollValue] = useState(0);
+    const [prevTurnData, setPrevTurnData] = useState({ color: null, value: 0 });
+    const prevTurnTimerRef = useRef(null);
     const [consecutiveSixes, setConsecutiveSixes] = useState(0);
     const pendingAutoMoveRef = useRef(null);
+
+    // Final cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
+        };
+    }, []);
 
     const [playerData, setPlayerData] = useState(() => {
         const data = {};
@@ -39,12 +49,12 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         return initialState;
     });
 
-    // Auto-select first dice if nothing selected
+    // Auto-select first dice if nothing selected and queue has items
     useEffect(() => {
-        if (diceQueue.length > 0 && selectedDiceId === null && !canRoll) {
+        if (diceQueue.length > 0 && selectedDiceId === null) {
             setSelectedDiceId(diceQueue[0].id);
         }
-    }, [diceQueue, selectedDiceId, canRoll]);
+    }, [diceQueue, selectedDiceId]);
 
     const currentPlayerColor = PLAYER_ORDER[turn];
 
@@ -229,13 +239,22 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         return true;
     }, [gameMode, playerData, gameState, isTeamMode]);
 
-    const nextTurn = useCallback(() => {
+    const nextTurn = useCallback((finalValue = 0) => {
+        if (finalValue > 0) {
+            setPrevTurnData({ color: PLAYER_ORDER[turn], value: finalValue });
+            if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
+            prevTurnTimerRef.current = setTimeout(() => {
+                setPrevTurnData({ color: null, value: 0 });
+            }, 2000);
+        }
+
         setTurn(prev => (prev + 1) % 4);
         setDiceQueue([]);
         setSelectedDiceId(null);
         setCanRoll(true);
+        setLastRollValue(0);
         setConsecutiveSixes(0);
-    }, []);
+    }, [turn]);
 
     // Check for stuck state (no valid moves)
     useEffect(() => {
@@ -260,8 +279,8 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
             if (!hasAnyValidMove) {
                 console.log("No valid moves available. Skipping turn...");
-                const timer = setTimeout(nextTurn, 2000);
-                return () => clearTimeout(timer);
+                const finalVal = diceQueue[diceQueue.length - 1].value;
+                nextTurn(finalVal);
             }
         }
     }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, nextTurn, isValidMove, isTeamMode]);
@@ -331,9 +350,11 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
     const rollDice = () => {
         if (!canRoll) return;
+        setCanRoll(false); // Lock immediately to prevent multi-click exploit
         setRolling(true);
         setSelectedDiceId(null); // Clear selection when rolling more
         playDiceRollSound();
+        setLastRollValue(0); // Reset display while pulling
 
         setTimeout(() => {
             // Weighted Dice Logic
@@ -341,6 +362,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             const val = weightPool[Math.floor(Math.random() * weightPool.length)];
 
             setRolling(false);
+            setLastRollValue(val);
 
             if (val === 6) {
                 const newCount = consecutiveSixes + 1;
@@ -348,11 +370,16 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 // 3 Consecutive Sixes Rule
                 if (newCount === 3) {
                     console.log("Three 6s in a row! Turn forfeited.");
-                    setDiceQueue([]); // Clear everything
-                    setSelectedDiceId(null);
+                    const newDice = { id: Date.now() + Math.random(), value: val };
+                    setDiceQueue(prev => [...prev, newDice]);
                     setConsecutiveSixes(0);
                     setCanRoll(false);
-                    setTimeout(nextTurn, 1000);
+
+                    setTimeout(() => {
+                        setDiceQueue([]); // Clear everything after delay
+                        setSelectedDiceId(null);
+                        nextTurn();
+                    }, 2000); // 2 second delay to show the "triple six"
                     return;
                 }
 
@@ -384,10 +411,12 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         return SAFE_SPOTS.includes(index);
     };
 
-    const moveToken = (tokenId, tokenColor = currentPlayerColor) => {
-        if (!selectedDiceId) return;
+    const moveToken = (tokenId, tokenColor = currentPlayerColor, diceId = null) => {
+        // diceId can be passed manually if choosing from a menu
+        const effectiveDiceId = diceId || selectedDiceId;
+        if (!effectiveDiceId) return;
 
-        const diceObj = diceQueue.find(d => d.id === selectedDiceId);
+        const diceObj = diceQueue.find(d => d.id === effectiveDiceId);
         if (!diceObj) return;
         const moveValue = diceObj.value;
 
@@ -520,7 +549,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         setPlayerData(newPlayerData);
 
         // Remove used dice
-        const remainingQueue = diceQueue.filter(d => d.id !== selectedDiceId);
+        const remainingQueue = diceQueue.filter(d => d.id !== (diceId || selectedDiceId));
         setDiceQueue(remainingQueue);
 
         // Auto-select next available
@@ -533,7 +562,9 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         if (captureOccurred) {
             setCanRoll(true);
         } else if (remainingQueue.length === 0 && !canRoll) {
-            nextTurn();
+            // Add a short delay before passing turn to let user see the final move/dice result
+            // Pass lastRollValue to ensure it stays in the tray during the "Visual Legacy" period
+            setTimeout(() => nextTurn(lastRollValue), 1000);
         }
     };
 
@@ -562,6 +593,14 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         }
     }
 
+    const getValidDiceForToken = (tokenId, tokenColor) => {
+        const tokens = gameState[tokenColor];
+        const token = tokens.find(t => String(t.id) === String(tokenId));
+        if (!token) return [];
+
+        return diceQueue.filter(dice => isValidMove(token, dice.value, tokenColor));
+    };
+
     return {
         gameState,
         currentPlayerColor,
@@ -571,7 +610,10 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         selectDice,
         rolling,
         canRoll,
+        lastRollValue,
+        prevTurnData,
         moveToken,
+        getValidDiceForToken,
         turn,
         playerData,
         validTokenIds

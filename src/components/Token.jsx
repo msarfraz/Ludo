@@ -1,30 +1,38 @@
 import React from 'react';
 import './../index.css';
 
-import marioImg from '../assets/tokens/mario.png';
-import luigiImg from '../assets/tokens/luigi.png';
-import warioImg from '../assets/tokens/wario.png';
-import koopaImg from '../assets/tokens/koopa.png';
-
-const Token = ({ color, onClick, isMobile, animate, isValid }) => {
-    const assetMap = {
-        red: marioImg,
-        green: luigiImg,
-        yellow: warioImg,
-        blue: koopaImg
-    };
-
+const Token = ({ color, onClick, animate, isValid, moveOptions, onSelectMove }) => {
     return (
         <div
             className={`token ${color} ${animate ? 'animate-bounce' : ''} ${isValid ? 'highlight-valid' : ''}`}
             onClick={onClick}
         >
-            <img
-                src={assetMap[color]}
-                alt={`${color} token`}
-                className="token-character"
-            />
-            <div className="token-inner"></div>
+            <div className="token-face">
+                <svg viewBox="0 0 100 100" className="token-svg">
+                    <path
+                        d="M50 5L61.23 39.57H97.55L68.16 60.95L79.39 95.53L50 74.15L20.61 95.53L31.84 60.95L2.45 39.57H38.77L50 5Z"
+                        fill="black"
+                        opacity="0.6"
+                    />
+                </svg>
+            </div>
+
+            {moveOptions && (
+                <div className="move-selection-menu" onClick={(e) => e.stopPropagation()}>
+                    {moveOptions.map(opt => (
+                        <button
+                            key={opt.id}
+                            className="move-option-btn"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectMove(opt.id);
+                            }}
+                        >
+                            {opt.value}
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

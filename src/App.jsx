@@ -34,10 +34,15 @@ const GameInstance = ({ config, onExit }) => {
     selectDice,
     rolling,
     canRoll,
+    lastRollValue,
+    prevTurnData,
     moveToken,
     playerData,
-    validTokenIds
+    validTokenIds,
+    getValidDiceForToken
   } = useLudoGame(mode, isTeamMode);
+
+  const [activeMoveSelection, setActiveMoveSelection] = useState(null); // { tokenId, color, options }
 
   const handleTokenClick = (color, id) => {
     // Team Logic:
@@ -58,63 +63,52 @@ const GameInstance = ({ config, onExit }) => {
     }
 
     if (!isCurrent && !isTeammate) return;
-    moveToken(id, color);
+
+    // Check how many dice can actually move this token
+    const options = getValidDiceForToken(id, color);
+
+    if (options.length === 0) return;
+
+    if (options.length === 1) {
+      // Only one choice - move instantly
+      moveToken(id, color, options[0].id);
+      setActiveMoveSelection(null);
+    } else {
+      // Multiple choices - show selection menu
+      setActiveMoveSelection({ tokenId: id, color, options });
+    }
+  };
+
+  const handleSelectMove = (diceId) => {
+    if (activeMoveSelection) {
+      moveToken(activeMoveSelection.tokenId, activeMoveSelection.color, diceId);
+      setActiveMoveSelection(null);
+    }
   };
 
   return (
-    <div className="game-container">
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', maxWidth: '600px', justifyContent: 'space-between', color: 'white', padding: '0 10px' }}>
-        <button onClick={onExit} style={{ background: 'transparent', border: '1px solid #666', color: '#999', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}>
-          &larr; Exit
-        </button>
-        <h1 style={{ margin: 0, fontSize: '1.2rem' }}>
-          Ludo {mode === GAME_MODES.MASTER ? <span style={{ color: '#ea4335' }}>MASTER</span> : <span style={{ color: '#34a853' }}>CLASSIC</span>}
-          {isTeamMode && <span style={{ marginLeft: '10px', fontSize: '0.8rem', background: '#4285f4', padding: '2px 6px', borderRadius: '4px' }}>TEAM</span>}
-        </h1>
-        <div style={{ fontSize: '0.8rem', textAlign: 'right', width: '150px' }}>
-          {mode === GAME_MODES.MASTER && (
-            playerData[currentPlayerColor]?.hasCaptured
-              ? <span style={{ color: '#34a853' }}>Unlocked Home Entry</span>
-              : <span style={{ color: '#ea4335' }}>Must Capture First</span>
-          )}
-        </div>
-      </div>
-
-      <LudoBoard
-        gameState={gameState}
-        onTokenClick={handleTokenClick}
-        currentPlayer={currentPlayerColor}
-        isTeamMode={isTeamMode}
-        gameMode={mode}
-        playerData={playerData}
-        diceProps={{
-          value: 0, // Legacy support
-          queue: diceQueue,
-          selectedId: selectedDiceId,
-          onSelect: selectDice,
-          onRoll: rollDice,
-          canRoll: canRoll,
-          rolling: rolling
-        }}
-        validTokens={validTokenIds}
-      />
-
-      {/* Instructions / Feedback */}
-      {!canRoll && diceQueue.length === 0 && (
-        // Should not happen?
-        null
-      )}
-      {!canRoll && diceQueue.length > 0 && !selectedDiceId && (
-        <div style={{ color: '#ddd', marginTop: '10px' }}>
-          Select a dice to move
-        </div>
-      )}
-      {!canRoll && diceQueue.length > 0 && selectedDiceId && (
-        <div style={{ color: '#ddd', marginTop: '10px' }}>
-          Select a token to move with {diceQueue.find(d => d.id === selectedDiceId)?.value}
-        </div>
-      )}
-    </div>
+    <LudoBoard
+      gameState={gameState}
+      onTokenClick={handleTokenClick}
+      currentPlayer={currentPlayerColor}
+      isTeamMode={isTeamMode}
+      gameMode={mode}
+      playerData={playerData}
+      diceProps={{
+        value: lastRollValue,
+        queue: diceQueue,
+        selectedId: selectedDiceId,
+        onSelect: selectDice,
+        onRoll: rollDice,
+        canRoll: canRoll,
+        rolling: rolling,
+        prevTurnData: prevTurnData
+      }}
+      validTokens={validTokenIds}
+      activeMoveSelection={activeMoveSelection}
+      onSelectMove={handleSelectMove}
+      onCancelMove={() => setActiveMoveSelection(null)}
+    />
   );
 };
 
