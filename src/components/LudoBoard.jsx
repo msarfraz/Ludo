@@ -114,6 +114,12 @@ const LudoBoard = ({
         if (stepsMoved === -1) {
             return { location: 'HOME' };
         } else if (stepsMoved === 56) {
+            // Map to central triangles (1-indexed grid)
+            // Green: West, Yellow: North, Blue: East, Red: South
+            if (color === 'green') return { location: 'BOARD', r: 8, c: 7 };
+            if (color === 'yellow') return { location: 'BOARD', r: 7, c: 8 };
+            if (color === 'blue') return { location: 'BOARD', r: 8, c: 9 };
+            if (color === 'red') return { location: 'BOARD', r: 9, c: 8 };
             return { location: 'GOAL' };
         } else {
             const isLocked = gameMode === GAME_MODES.MASTER && !playerData[color]?.hasCaptured;
@@ -270,14 +276,14 @@ const LudoBoard = ({
                         {renderHomeBase('red', 'home-red')}
                         {renderHomeBase('blue', 'home-blue')}
 
-                        {/* Center */}
+                        {/* Center Home - Triangular Layout */}
                         <div className="center-home">
-                            <div className="quad-green"></div>
-                            <div className="quad-yellow"></div>
-                            <div className="quad-red"></div>
-                            <div className="quad-blue"></div>
-                            <div className="center-circle">
-                                <div className="center-dot"></div>
+                            <div className="triangle-top"></div>
+                            <div className="triangle-right"></div>
+                            <div className="triangle-bottom"></div>
+                            <div className="triangle-left"></div>
+                            <div className="center-seal">
+                                <div className="seal-inner"></div>
                             </div>
                         </div>
 

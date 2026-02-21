@@ -412,6 +412,12 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     };
 
     const moveToken = (tokenId, tokenColor = currentPlayerColor, diceId = null) => {
+        // Rule: All dice rolls must be completed before any move is allowed
+        if (canRoll) {
+            console.log("Finish all rolls before moving!");
+            return;
+        }
+
         // diceId can be passed manually if choosing from a menu
         const effectiveDiceId = diceId || selectedDiceId;
         if (!effectiveDiceId) return;
