@@ -7,26 +7,25 @@ const rotations = {
     6: 'rotateX(180deg) rotateY(0deg)',
 };
 
-const dots = {
-    1: [4],
-    2: [0, 8],
-    3: [0, 4, 8],
-    4: [0, 2, 6, 8],
-    5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
+const svgDots = {
+    1: [{ cx: 50, cy: 50 }], // Used for small dice in tray
+    2: [{ cx: 25, cy: 25 }, { cx: 75, cy: 75 }],
+    3: [{ cx: 25, cy: 25 }, { cx: 50, cy: 50 }, { cx: 75, cy: 75 }],
+    4: [{ cx: 25, cy: 25 }, { cx: 75, cy: 25 }, { cx: 25, cy: 75 }, { cx: 75, cy: 75 }],
+    5: [{ cx: 25, cy: 25 }, { cx: 75, cy: 25 }, { cx: 50, cy: 50 }, { cx: 25, cy: 75 }, { cx: 75, cy: 75 }],
+    6: [{ cx: 25, cy: 20 }, { cx: 75, cy: 20 }, { cx: 25, cy: 50 }, { cx: 75, cy: 50 }, { cx: 25, cy: 80 }, { cx: 75, cy: 80 }],
 };
 
 const Dice = ({ value, onRoll, disabled, rolling, isActive, color = 'red', size = 42 }) => {
     const halfSize = size / 2;
-    const dotSize = Math.max(2, Math.floor(size / 6));
     const isBigDice = size > 40;
 
     // Pulse only if it's our turn, we haven't rolled yet, and it's a big dice
     const shouldPulse = isActive && !disabled && !rolling && isBigDice;
 
     const renderFace = (faceIndex, transform) => {
-        // Face 1 on the main dice (big) shows the Star icon only when idle/reset (value 0)
-        const showStar = faceIndex === 1 && isBigDice && targetValue === 0;
+        // Face 1 on the main dice (big) shows the Star icon always
+        const showStar = faceIndex === 1 && isBigDice;
 
         return (
             <div
@@ -36,11 +35,9 @@ const Dice = ({ value, onRoll, disabled, rolling, isActive, color = 'red', size 
                     height: size,
                     transform: transform,
                     padding: Math.max(2, size / 10),
-                    display: showStar ? 'flex' : 'grid',
+                    display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    gridTemplateColumns: showStar ? 'none' : 'repeat(3, 1fr)',
-                    gridTemplateRows: showStar ? 'none' : 'repeat(3, 1fr)'
                 }}
             >
                 {showStar ? (
@@ -69,20 +66,26 @@ const Dice = ({ value, onRoll, disabled, rolling, isActive, color = 'red', size 
                         </svg>
                     </div>
                 ) : (
-                    dots[faceIndex].map(dotIdx =>
-                        <div
-                            key={dotIdx}
-                            className={`dice-dot dot-${dotIdx}`}
-                            style={{ width: dotSize, height: dotSize }}
-                        ></div>
-                    )
+                    <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                        {(svgDots[faceIndex] || []).map((dot, i) => (
+                            <circle
+                                key={i}
+                                cx={dot.cx}
+                                cy={dot.cy}
+                                r="12"
+                                fill="#333"
+                                vectorEffect="non-scaling-stroke"
+                                style={{ filter: 'drop-shadow(0px 1px 1px rgba(0,0,0,0.5))' }}
+                            />
+                        ))}
+                    </svg>
                 )}
             </div>
         );
     };
 
     const targetValue = value || 0;
-    const rotationValue = targetValue === 0 ? 1 : targetValue;
+    const rotationValue = isBigDice ? 1 : (targetValue === 0 ? 1 : targetValue);
 
     return (
         <div

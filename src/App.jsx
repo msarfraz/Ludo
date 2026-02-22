@@ -39,7 +39,9 @@ const GameInstance = ({ config, onExit }) => {
     moveToken,
     playerData,
     validTokenIds,
-    getValidDiceForToken
+    capturableTokenIds,
+    getValidDiceForToken,
+    getMovesToCaptureTarget
   } = useLudoGame(mode, isTeamMode);
 
   const [activeMoveSelection, setActiveMoveSelection] = useState(null); // { tokenId, color, options }
@@ -62,7 +64,18 @@ const GameInstance = ({ config, onExit }) => {
       }
     }
 
-    if (!isCurrent && !isTeammate) return;
+    if (!isCurrent && !isTeammate) {
+      if (capturableTokenIds.includes(`${color}-${id}`)) {
+        const captureMoves = getMovesToCaptureTarget(id, color);
+        if (captureMoves.length > 0) {
+          // If there are multiple ways to capture, we simply use the first one 
+          // for the convenience of one-click capture.
+          moveToken(captureMoves[0].sourceId, captureMoves[0].sourceColor, captureMoves[0].diceId);
+          setActiveMoveSelection(null);
+        }
+      }
+      return;
+    }
 
     // Check how many dice can actually move this token
     const options = getValidDiceForToken(id, color);
@@ -105,6 +118,7 @@ const GameInstance = ({ config, onExit }) => {
         prevTurnData: prevTurnData
       }}
       validTokens={validTokenIds}
+      capturableTokens={capturableTokenIds}
       activeMoveSelection={activeMoveSelection}
       onSelectMove={handleSelectMove}
       onCancelMove={() => setActiveMoveSelection(null)}

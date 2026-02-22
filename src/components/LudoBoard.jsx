@@ -15,6 +15,7 @@ const LudoBoard = ({
     playerData,
     diceProps,
     validTokens = [],
+    capturableTokens = [],
     activeMoveSelection = null,
     onSelectMove,
     onCancelMove
@@ -43,14 +44,17 @@ const LudoBoard = ({
 
             currentTokens.forEach(curr => {
                 const prev = prevTokens.find(p => p.id === curr.id);
-                if (prev && curr.stepsMoved > prev.stepsMoved) {
-                    movingTokens.push({
-                        color,
-                        id: curr.id,
-                        from: prev.stepsMoved,
-                        to: curr.stepsMoved,
-                        current: prev.stepsMoved
-                    });
+                if (prev) {
+                    const wrappedAround = prev.stepsMoved > 45 && curr.stepsMoved >= 0 && curr.stepsMoved < 15;
+                    if (curr.stepsMoved > prev.stepsMoved || wrappedAround) {
+                        movingTokens.push({
+                            color,
+                            id: curr.id,
+                            from: prev.stepsMoved,
+                            to: wrappedAround ? curr.stepsMoved + 52 : curr.stepsMoved,
+                            current: prev.stepsMoved
+                        });
+                    }
                 }
             });
         });
@@ -109,7 +113,9 @@ const LudoBoard = ({
 
     const getTokenStyle = (color, token) => {
         let r, c;
-        const { stepsMoved } = token;
+        const isLocked = gameMode === GAME_MODES.MASTER && !playerData[color]?.hasCaptured;
+        // Apply modulo 52 for animation frames that wrap around
+        const stepsMoved = isLocked && token.stepsMoved > 50 ? token.stepsMoved % 52 : token.stepsMoved;
 
         if (stepsMoved === -1) {
             return { location: 'HOME' };
@@ -122,7 +128,6 @@ const LudoBoard = ({
             if (color === 'red') return { location: 'BOARD', r: 9, c: 8 };
             return { location: 'GOAL' };
         } else {
-            const isLocked = gameMode === GAME_MODES.MASTER && !playerData[color]?.hasCaptured;
             const coords = getBoardCoordinates(color, stepsMoved, isLocked);
             if (coords) {
                 return { location: 'BOARD', r: coords[0] + 1, c: coords[1] + 1 }; // 1-indexed grid
@@ -139,7 +144,8 @@ const LudoBoard = ({
             const style = getTokenStyle(color, token);
             if (style.location === 'BOARD') {
                 const isValid = validTokens.includes(`${color}-${token.id}`);
-                boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid });
+                const isCapturable = capturableTokens.includes(`${color}-${token.id}`);
+                boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid, isCapturable });
             }
         });
     });
@@ -149,8 +155,8 @@ const LudoBoard = ({
     // 2. Active Player Invalid
     // 3. Active Player Valid (Top)
     boardTokens.sort((a, b) => {
-        const scoreA = (a.color === currentPlayer ? 10 : 0) + (a.isValid ? 20 : 0);
-        const scoreB = (b.color === currentPlayer ? 10 : 0) + (b.isValid ? 20 : 0);
+        const scoreA = (a.color === currentPlayer ? 10 : 0) + (a.isValid ? 20 : 0) + (a.isCapturable ? 15 : 0);
+        const scoreB = (b.color === currentPlayer ? 10 : 0) + (b.isValid ? 20 : 0) + (b.isCapturable ? 15 : 0);
         return scoreA - scoreB;
     });
 
@@ -200,25 +206,20 @@ const LudoBoard = ({
 
     const renderDiceTray = (playerColor) => {
         const isActive = currentPlayer === playerColor;
-        const rolls = diceProps?.queue || [];
+        const isLegacy = !isActive && diceProps.prevTurnData?.color === playerColor;
+
+        const currentRolls = isActive ? (diceProps?.queue || []) : (isLegacy ? (diceProps.prevTurnData.queue || []) : []);
 
         // Logical separation: show legacy value if it's NOT the current turn but we just finished
         let mainDiceValue = 0;
         if (isActive) {
             mainDiceValue = (!diceProps.rolling && diceProps.value !== 6) ? diceProps.value : 0;
-        } else if (diceProps.prevTurnData?.color === playerColor) {
-            // Visual Legacy: Not my turn, but I just finished with this roll
+        } else if (isLegacy) {
             mainDiceValue = diceProps.prevTurnData.value !== 6 ? diceProps.prevTurnData.value : 0;
         }
 
-        // Extra dice (6s) shown in tray
-        const trayDice = rolls.filter((d, idx) => {
-            // If it's a 6, it always goes to tray
-            if (d.value === 6) return true;
-            // If it's NOT a 6, it only goes to tray if it wasn't the VERY LAST roll
-            // Because the very last non-6 roll is displayed on the main dice
-            return idx < rolls.length - 1;
-        });
+        // All rolled dice shown in tray since main dice displays star
+        const trayDice = currentRolls;
 
         return (
             <div className={`tray-player-container active-${playerColor} ${isActive ? 'active' : ''}`}>
@@ -232,13 +233,13 @@ const LudoBoard = ({
                         size={44}
                     />
 
-                    {isActive && trayDice.length > 0 && (
+                    {(isActive || isLegacy) && trayDice.length > 0 && (
                         <div className="stacked-rolls-container">
                             {trayDice.map(d => (
                                 <div
                                     key={d.id}
                                     className={`stacked-roll-item color-gray ${diceProps.selectedId === d.id ? 'selected' : ''} ${diceProps.canRoll ? 'disabled' : ''}`}
-                                    onClick={() => diceProps.onSelect(d.id)}
+                                    onClick={() => isActive ? diceProps.onSelect(d.id) : null}
                                 >
                                     <Dice value={d.value} size={30} />
                                 </div>
@@ -395,6 +396,7 @@ const LudoBoard = ({
                                             }}
                                             animate={isCurrent}
                                             isValid={t.isValid}
+                                            isCapturable={t.isCapturable}
                                             moveOptions={activeMoveSelection?.tokenId === t.id && activeMoveSelection?.color === t.color ? activeMoveSelection.options : null}
                                             onSelectMove={onSelectMove}
                                         />

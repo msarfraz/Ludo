@@ -1,10 +1,10 @@
 import React from 'react';
 import './../index.css';
 
-const Token = ({ color, onClick, animate, isValid, moveOptions, onSelectMove }) => {
+const Token = ({ color, onClick, animate, isValid, isCapturable, moveOptions, onSelectMove }) => {
     return (
         <div
-            className={`token ${color} ${animate ? 'animate-bounce' : ''} ${isValid ? 'highlight-valid' : ''}`}
+            className={`token ${color} ${animate ? 'animate-bounce' : ''} ${isValid ? 'highlight-valid' : ''} ${isCapturable ? 'highlight-target' : ''}`}
             onClick={onClick}
         >
             <div className="token-face">
