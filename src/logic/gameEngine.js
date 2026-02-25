@@ -60,6 +60,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     const currentPlayerColor = PLAYER_ORDER[turn];
 
     const isValidMove = useCallback((token, diceValue, tokenColor = currentPlayerColor) => {
+        if (isVoidingTurn) return false;
         if (token.stepsMoved === -1 && diceValue !== 6) return false;
         const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[tokenColor]?.hasCaptured;
 
@@ -302,7 +303,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 }
             });
 
-            // Check Teammate ONLY IF own collection is empty
+            // Check Teammate ONLY IF own moves are empty (Restore Priority)
             if (isTeamMode && validMoves.length === 0) {
                 const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
                 const teammateIdx = (currentIdx + 2) % 4;
@@ -334,6 +335,14 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                     // All valid tokens are at same spot and same color.
                     // Just pick the first one.
                     const moveTarget = validMoves[0];
+
+                    // BUG FIX: Inhibit auto-move for doubles (manual choice required)
+                    const tokensAtSpot = gameState[moveTarget.color].filter(t => t.stepsMoved === moveTarget.steps && t.stepsMoved !== -1 && t.stepsMoved < 51);
+                    if (tokensAtSpot.length > 1) {
+                        console.log("Inhibiting auto-move for double token.");
+                        return;
+                    }
+
                     console.log("Auto-moving unique logical option...");
 
                     pendingAutoMoveRef.current = selectedDiceId;
@@ -416,6 +425,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     };
 
     const moveToken = (tokenId, tokenColor = currentPlayerColor, diceId = null) => {
+        if (isVoidingTurn) return;
         // Rule: All dice rolls must be completed before any move is allowed
         if (canRoll) {
             console.log("Finish all rolls before moving!");
@@ -496,6 +506,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         let newGameState = { ...gameState };
         let newPlayerData = { ...playerData };
 
+        const goalReached = newSteps === 56;
         if (newSteps <= 50 || (isMasterLocked && newSteps === 51)) {
             const offset = PATH_OFFSETS[tokenColor];
             const globalPathIndex = (offset + newSteps) % 52;
@@ -569,7 +580,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             setSelectedDiceId(null);
         }
 
-        if (captureOccurred) {
+        if (captureOccurred || goalReached) {
             setCanRoll(true);
         } else if (remainingQueue.length === 0 && !canRoll) {
             // Add a short delay before passing turn to let user see the final move animation
@@ -592,7 +603,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 }
             });
 
-            // Add teammate valid tokens ONLY if ownValidMoves is empty
+            // Add teammate valid tokens ONLY IF own moves are empty (Restore Priority)
             if (isTeamMode && ownValidMoves.length === 0) {
                 const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
                 const teammateIdx = (currentIdx + 2) % 4;
@@ -678,6 +689,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     }
 
     const getValidDiceForToken = (tokenId, tokenColor) => {
+        if (isVoidingTurn) return [];
         const tokens = gameState[tokenColor];
         const token = tokens.find(t => String(t.id) === String(tokenId));
         if (!token) return [];
@@ -685,8 +697,9 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         return diceQueue.filter(dice => {
             if (!isValidMove(token, dice.value, tokenColor)) return false;
 
-            // If it's a teammate token, only allow if current player has no valid moves for this dice
+            // If it's a teammate token, allow it ONLY IF current player has no moves for this dice
             if (tokenColor !== currentPlayerColor) {
+                if (!isTeamMode) return false;
                 const anyOwnValid = gameState[currentPlayerColor].some(t => isValidMove(t, dice.value, currentPlayerColor));
                 if (anyOwnValid) return false;
             }

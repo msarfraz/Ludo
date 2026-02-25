@@ -568,7 +568,6 @@ body::before {
   justify-content: center;
   align-items: center;
   transform-style: preserve-3d;
-  animation: token-float 3s infinite alternate ease-in-out;
 }
 
 @keyframes token-float {
@@ -587,11 +586,11 @@ body::before {
 
 @keyframes token-bounce {
   0% {
-    transform: translateY(0);
+    transform: scale(1);
   }
 
   100% {
-    transform: translateY(-12px);
+    transform: scale(1.15);
   }
 }
 
@@ -692,7 +691,7 @@ body::before {
 /* Move Selection Menu */
 .move-selection-menu {
   position: absolute;
-  top: -75px;
+  top: -85px;
   /* Position above token */
   left: 50%;
   transform: translateX(-50%);
@@ -709,6 +708,12 @@ body::before {
   z-index: 1000;
   animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.move-selection-menu.position-bottom {
+  top: auto;
+  bottom: -85px;
+  /* Position below token */
 }
 
 @keyframes menu-pop {
@@ -1045,18 +1050,15 @@ body::before {
 
 @keyframes target-pulse {
   0% {
-    transform: scale(1);
     box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.8), 0 0 15px 5px rgba(255, 0, 0, 0.8);
   }
 
   50% {
-    transform: scale(1.15);
-    box-shadow: 0 0 0 10px rgba(255, 0, 0, 0.4), 0 0 25px 10px rgba(255, 0, 0, 0.8);
+    box-shadow: 0 0 0 12px rgba(255, 0, 0, 0), 0 0 25px 10px rgba(255, 0, 0, 0.8);
   }
 
   100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0), 0 0 15px 5px rgba(255, 0, 0, 0);
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0), 0 0 15px 5px rgba(255, 0, 0, 0.8);
   }
 }
 

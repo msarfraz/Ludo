@@ -145,7 +145,8 @@ const LudoBoard = ({
             if (style.location === 'BOARD') {
                 const isValid = validTokens.includes(`${color}-${token.id}`);
                 const isCapturable = capturableTokens.includes(`${color}-${token.id}`);
-                boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid, isCapturable });
+                const isTopEdge = style.r <= 3;
+                boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid, isCapturable, isTopEdge });
             }
         });
     });
@@ -196,6 +197,7 @@ const LudoBoard = ({
                                         isValid={isValid}
                                         moveOptions={activeMoveSelection?.tokenId === id && activeMoveSelection?.color === color ? activeMoveSelection.options : null}
                                         onSelectMove={onSelectMove}
+                                        isTopEdge={color === 'yellow' || color === 'green'}
                                     />
                                 )}
                             </div>
@@ -402,6 +404,7 @@ const LudoBoard = ({
                                                 isCapturable={t.isCapturable}
                                                 moveOptions={activeMoveSelection?.tokenId === t.id && activeMoveSelection?.color === t.color ? activeMoveSelection.options : null}
                                                 onSelectMove={onSelectMove}
+                                                isTopEdge={t.isTopEdge}
                                             />
                                         </div>
                                     </div>

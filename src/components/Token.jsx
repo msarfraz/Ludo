@@ -1,6 +1,6 @@
 import Dice from './Dice';
 
-const Token = ({ color, onClick, animate, isValid, isCapturable, moveOptions, onSelectMove }) => {
+const Token = ({ color, onClick, animate, isValid, isCapturable, moveOptions, onSelectMove, isTopEdge }) => {
     return (
         <div
             className={`token ${color} ${animate ? 'animate-bounce' : ''} ${isValid ? 'highlight-valid' : ''} ${isCapturable ? 'highlight-target' : ''}`}
@@ -19,7 +19,7 @@ const Token = ({ color, onClick, animate, isValid, isCapturable, moveOptions, on
             </div>
 
             {moveOptions && (
-                <div className="move-selection-menu" onClick={(e) => e.stopPropagation()}>
+                <div className={`move-selection-menu ${isTopEdge ? 'position-bottom' : ''}`} onClick={(e) => e.stopPropagation()}>
                     {moveOptions.map(opt => (
                         <div
                             key={opt.id}
@@ -29,7 +29,7 @@ const Token = ({ color, onClick, animate, isValid, isCapturable, moveOptions, on
                                 onSelectMove(opt.id);
                             }}
                         >
-                            <Dice value={opt.value} size={32} />
+                            <Dice value={opt.value} size={35} />
                         </div>
                     ))}
                 </div>
