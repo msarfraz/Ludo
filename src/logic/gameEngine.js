@@ -19,6 +19,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
     const [prevTurnData, setPrevTurnData] = useState({ color: null, value: 0, queue: [] });
     const prevTurnTimerRef = useRef(null);
     const [consecutiveSixes, setConsecutiveSixes] = useState(0);
+    const [isVoidingTurn, setIsVoidingTurn] = useState(false);
     const pendingAutoMoveRef = useRef(null);
 
     // Final cleanup on unmount
@@ -258,7 +259,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
     // Check for stuck state (no valid moves)
     useEffect(() => {
-        if (!rolling && !canRoll && diceQueue.length > 0) {
+        if (!rolling && !canRoll && diceQueue.length > 0 && !isVoidingTurn) {
             const currentTokens = gameState[currentPlayerColor];
             const hasAnyValidMove = diceQueue.some(dice => {
                 // Check own tokens
@@ -287,7 +288,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
     // Auto-Move Rule: If only one valid move exists, execute it.
     useEffect(() => {
-        if (!rolling && !canRoll && diceQueue.length > 0 && selectedDiceId && pendingAutoMoveRef.current !== selectedDiceId) {
+        if (!rolling && !canRoll && diceQueue.length > 0 && selectedDiceId && pendingAutoMoveRef.current !== selectedDiceId && !isVoidingTurn) {
             const dice = diceQueue.find(d => d.id === selectedDiceId);
             if (!dice) return;
 
@@ -370,6 +371,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 // 3 Consecutive Sixes Rule
                 if (newCount === 3) {
                     console.log("Three 6s in a row! Turn forfeited.");
+                    setIsVoidingTurn(true);
                     const newDice = { id: Date.now() + Math.random(), value: val };
                     const oldQueue = [...diceQueue, newDice];
                     setDiceQueue(oldQueue);
@@ -379,6 +381,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                     setTimeout(() => {
                         setDiceQueue([]); // Clear everything after delay
                         setSelectedDiceId(null);
+                        setIsVoidingTurn(false);
                         nextTurn(); // Already waited 2s on this turn, no need to show in legacy
                     }, 2000); // 2 second delay to show the "triple six"
                     return;
@@ -396,7 +399,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 setCanRoll(false);
                 setConsecutiveSixes(0);
             }
-        }, 600);
+        }, 400);
     };
 
     const selectDice = (id) => {
@@ -571,40 +574,51 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         } else if (remainingQueue.length === 0 && !canRoll) {
             // Add a short delay before passing turn to let user see the final move animation
             // Since it's utilized, DO NOT pass it into legacy tray
-            setTimeout(() => nextTurn(), 1000);
+            setTimeout(() => nextTurn(), 500);
         }
     };
 
     const validTokenIds = [];
-    if (selectedDiceId) {
-        const dice = diceQueue.find(d => d.id === selectedDiceId);
-        if (dice) {
-            // Check Own
-            gameState[currentPlayerColor].forEach(token => {
-                if (isValidMove(token, dice.value, currentPlayerColor)) {
-                    validTokenIds.push(`${currentPlayerColor}-${token.id}`);
+    if (diceQueue.length > 0) {
+        diceQueue.forEach(dice => {
+            const ownTokens = gameState[currentPlayerColor];
+            const ownValidMoves = ownTokens.filter(token => isValidMove(token, dice.value, currentPlayerColor));
+
+            // Add own valid tokens
+            ownValidMoves.forEach(token => {
+                const id = `${currentPlayerColor}-${token.id}`;
+                if (!validTokenIds.includes(id)) {
+                    validTokenIds.push(id);
                 }
             });
 
-            // Check Teammate ONLY IF current player has NO valid moves for this dice
-            if (isTeamMode && validTokenIds.length === 0) {
+            // Add teammate valid tokens ONLY if ownValidMoves is empty
+            if (isTeamMode && ownValidMoves.length === 0) {
                 const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
                 const teammateIdx = (currentIdx + 2) % 4;
                 const teammateColor = PLAYER_ORDER[teammateIdx];
                 gameState[teammateColor].forEach(token => {
                     if (isValidMove(token, dice.value, teammateColor)) {
-                        validTokenIds.push(`${teammateColor}-${token.id}`);
+                        const id = `${teammateColor}-${token.id}`;
+                        if (!validTokenIds.includes(id)) {
+                            validTokenIds.push(id);
+                        }
                     }
                 });
             }
-        }
+        });
     }
 
     const capturableTokenIds = [];
     if (diceQueue.length > 0) {
         diceQueue.forEach(dice => {
-            const colorsToCheck = [currentPlayerColor];
-            if (isTeamMode) {
+            const ownTokens = gameState[currentPlayerColor];
+            const ownValidMoves = ownTokens.filter(token => isValidMove(token, dice.value, currentPlayerColor));
+
+            const colorsToCheck = [];
+            if (ownValidMoves.length > 0) {
+                colorsToCheck.push(currentPlayerColor);
+            } else if (isTeamMode) {
                 const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
                 const teammateIdx = (currentIdx + 2) % 4;
                 colorsToCheck.push(PLAYER_ORDER[teammateIdx]);
@@ -613,8 +627,18 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             colorsToCheck.forEach(color => {
                 gameState[color].forEach(token => {
                     if (isValidMove(token, dice.value, color)) {
+                        // Determine Actual Move Steps (Pair Move Detection)
+                        const tokensAtSpot = gameState[color].filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
+                        const isDoubled = tokensAtSpot.length >= 2;
+                        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[color] + token.stepsMoved) % 52);
+
+                        let actualMoveSteps = dice.value;
+                        if (isDoubled && !isSafe && dice.value % 2 === 0) {
+                            actualMoveSteps = dice.value / 2;
+                        }
+
                         const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[color]?.hasCaptured;
-                        let newSteps = (token.stepsMoved === -1) ? 0 : token.stepsMoved + dice.value;
+                        let newSteps = (token.stepsMoved === -1) ? 0 : token.stepsMoved + actualMoveSteps;
                         if (isMasterLocked && newSteps > 50) newSteps = newSteps % 52;
 
                         if (newSteps <= 50 || (isMasterLocked && newSteps === 51)) {
@@ -623,7 +647,13 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                             if (!isGloballySafe(globalPathIndex)) {
                                 PLAYER_ORDER.forEach(pColor => {
                                     if (pColor === color) return;
-                                    if (isTeamMode && colorsToCheck.includes(pColor)) return;
+                                    // Skip self and teammate
+                                    if (pColor === currentPlayerColor) return;
+                                    if (isTeamMode) {
+                                        const cIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+                                        const pIdx = PLAYER_ORDER.indexOf(pColor);
+                                        if (Math.abs(cIdx - pIdx) === 2) return;
+                                    }
 
                                     gameState[pColor].forEach(oppToken => {
                                         const oppLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
@@ -652,7 +682,17 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         const token = tokens.find(t => String(t.id) === String(tokenId));
         if (!token) return [];
 
-        return diceQueue.filter(dice => isValidMove(token, dice.value, tokenColor));
+        return diceQueue.filter(dice => {
+            if (!isValidMove(token, dice.value, tokenColor)) return false;
+
+            // If it's a teammate token, only allow if current player has no valid moves for this dice
+            if (tokenColor !== currentPlayerColor) {
+                const anyOwnValid = gameState[currentPlayerColor].some(t => isValidMove(t, dice.value, currentPlayerColor));
+                if (anyOwnValid) return false;
+            }
+
+            return true;
+        });
     };
 
     const getMovesToCaptureTarget = (targetId, targetColor) => {
@@ -664,8 +704,14 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         const validCaptureMoves = [];
 
         diceQueue.forEach(dice => {
-            const colorsToCheck = [currentPlayerColor];
-            if (isTeamMode) {
+            // Priority: Only check teammate if current player has no valid moves for this dice
+            const ownTokens = gameState[currentPlayerColor];
+            const ownValidMoves = ownTokens.filter(t => isValidMove(t, dice.value, currentPlayerColor));
+
+            const colorsToCheck = [];
+            if (ownValidMoves.length > 0) {
+                colorsToCheck.push(currentPlayerColor);
+            } else if (isTeamMode) {
                 const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
                 const teammateIdx = (currentIdx + 2) % 4;
                 colorsToCheck.push(PLAYER_ORDER[teammateIdx]);
@@ -674,8 +720,18 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             colorsToCheck.forEach(color => {
                 gameState[color].forEach(sourceToken => {
                     if (isValidMove(sourceToken, dice.value, color)) {
+                        // Determine Actual Move Steps (Pair Move Detection)
+                        const tokensAtSpot = gameState[color].filter(t => t.stepsMoved === sourceToken.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
+                        const isDoubled = tokensAtSpot.length >= 2;
+                        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[color] + sourceToken.stepsMoved) % 52);
+
+                        let actualMoveSteps = dice.value;
+                        if (isDoubled && !isSafe && dice.value % 2 === 0) {
+                            actualMoveSteps = dice.value / 2;
+                        }
+
                         const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[color]?.hasCaptured;
-                        let newSteps = (sourceToken.stepsMoved === -1) ? 0 : sourceToken.stepsMoved + dice.value;
+                        let newSteps = (sourceToken.stepsMoved === -1) ? 0 : sourceToken.stepsMoved + actualMoveSteps;
                         if (isMasterLocked && newSteps > 50) newSteps = newSteps % 52;
 
                         if (newSteps <= 50 || (isMasterLocked && newSteps === 51)) {

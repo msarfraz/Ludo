@@ -82,8 +82,11 @@ const GameInstance = ({ config, onExit }) => {
 
     if (options.length === 0) return;
 
-    if (options.length === 1) {
-      // Only one choice - move instantly
+    const token = gameState[color].find(t => String(t.id) === String(id));
+    const isHome = token && token.stepsMoved === -1;
+
+    if (options.length === 1 || isHome) {
+      // Only one choice or it's a house token (which always consumes a '6') - move instantly
       moveToken(id, color, options[0].id);
       setActiveMoveSelection(null);
     } else {
