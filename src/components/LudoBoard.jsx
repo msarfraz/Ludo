@@ -146,7 +146,10 @@ const LudoBoard = ({
                 const isValid = validTokens.includes(`${color}-${token.id}`);
                 const isCapturable = capturableTokens.includes(`${color}-${token.id}`);
                 const isTopEdge = style.r <= 3;
-                boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid, isCapturable, isTopEdge });
+                const isBottomEdge = style.r >= 13;
+                const isLeftEdge = style.c <= 2;
+                const isRightEdge = style.c >= 14;
+                boardTokens.push({ ...token, color, r: style.r, c: style.c, isValid, isCapturable, isTopEdge, isBottomEdge, isLeftEdge, isRightEdge });
             }
         });
     });
@@ -198,6 +201,10 @@ const LudoBoard = ({
                                         moveOptions={activeMoveSelection?.tokenId === id && activeMoveSelection?.color === color ? activeMoveSelection.options : null}
                                         onSelectMove={onSelectMove}
                                         isTopEdge={color === 'yellow' || color === 'green'}
+                                        isBottomEdge={color === 'red' || color === 'blue'}
+                                        isLeftEdge={color === 'green' || color === 'red'}
+                                        isRightEdge={color === 'yellow' || color === 'blue'}
+                                        parentScale={1.5}
                                     />
                                 )}
                             </div>
@@ -405,6 +412,10 @@ const LudoBoard = ({
                                                 moveOptions={activeMoveSelection?.tokenId === t.id && activeMoveSelection?.color === t.color ? activeMoveSelection.options : null}
                                                 onSelectMove={onSelectMove}
                                                 isTopEdge={t.isTopEdge}
+                                                isBottomEdge={t.isBottomEdge}
+                                                isLeftEdge={t.isLeftEdge}
+                                                isRightEdge={t.isRightEdge}
+                                                parentScale={scale}
                                             />
                                         </div>
                                     </div>

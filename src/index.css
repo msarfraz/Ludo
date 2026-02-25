@@ -267,6 +267,7 @@ body::before {
   z-index: 1;
 }
 
+
 @keyframes border-rotate {
   100% {
     transform: rotate(360deg);
@@ -555,7 +556,16 @@ body::before {
 }
 
 /* Tokens */
-.token {
+.token-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.token-body {
   width: 80%;
   height: 80%;
   border-radius: 50%;
@@ -581,7 +591,7 @@ body::before {
 }
 
 .animate-bounce {
-  animation: token-bounce 0.6s infinite alternate ease-in-out;
+  animation: token-bounce 0.6s infinite alternate ease-in-out !important;
 }
 
 @keyframes token-bounce {
@@ -594,30 +604,30 @@ body::before {
   }
 }
 
-.token:hover {
+.token-body:hover {
   transform: translateY(-8px) scale(1.1);
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
 }
 
-.token.red {
+.token-body.red {
   background: radial-gradient(circle at 30% 30%, var(--color-red-light), var(--color-red));
   box-shadow: 0 4px 10px rgba(234, 67, 53, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
   border-color: var(--color-red-dark);
 }
 
-.token.green {
+.token-body.green {
   background: radial-gradient(circle at 30% 30%, var(--color-green-light), var(--color-green));
   box-shadow: 0 4px 10px rgba(52, 168, 83, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
   border-color: var(--color-green-dark);
 }
 
-.token.yellow {
+.token-body.yellow {
   background: radial-gradient(circle at 30% 30%, var(--color-yellow-light), var(--color-yellow));
   box-shadow: 0 4px 10px rgba(251, 188, 5, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
   border-color: var(--color-yellow-dark);
 }
 
-.token.blue {
+.token-body.blue {
   background: radial-gradient(circle at 30% 30%, var(--color-blue-light), var(--color-blue));
   box-shadow: 0 4px 10px rgba(66, 133, 244, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
   border-color: var(--color-blue-dark);
@@ -668,27 +678,27 @@ body::before {
   z-index: 2;
 }
 
-.token path {
+.token-body path {
   opacity: 1 !important;
 }
 
-.token.red path {
+.token-body.red path {
   fill: var(--color-red-dark) !important;
 }
 
-.token.green path {
+.token-body.green path {
   fill: var(--color-green-dark) !important;
 }
 
-.token.blue path {
+.token-body.blue path {
   fill: var(--color-blue-dark) !important;
 }
 
-.token.yellow path {
+.token-body.yellow path {
   fill: var(--color-yellow-dark) !important;
 }
 
-/* Move Selection Menu */
+/* Ensure menu stays stationary and centered */
 .move-selection-menu {
   position: absolute;
   top: -85px;
@@ -706,14 +716,32 @@ body::before {
     0 0 0 1px rgba(255, 255, 255, 0.1),
     0 0 20px rgba(212, 175, 55, 0.2);
   z-index: 1000;
-  animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   border: 1px solid rgba(212, 175, 55, 0.3);
 }
 
 .move-selection-menu.position-bottom {
   top: auto;
-  bottom: -85px;
+  bottom: -90px;
   /* Position below token */
+}
+
+.move-selection-menu.position-top {
+  top: -90px;
+  bottom: auto;
+}
+
+.move-selection-menu.shift-right {
+  left: 0;
+  transform: translateX(0);
+  animation-name: menu-pop-shift;
+}
+
+.move-selection-menu.shift-left {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
+  animation-name: menu-pop-shift;
 }
 
 @keyframes menu-pop {
@@ -724,6 +752,18 @@ body::before {
 
   to {
     transform: translateX(-50%) scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes menu-pop-shift {
+  from {
+    transform: scale(0.5) translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1) translateY(0);
     opacity: 1;
   }
 }
@@ -931,14 +971,14 @@ body::before {
 }
 
 /* Valid Move Highlight - Color Specific and Loud */
-.token.highlight-valid {
+.token-body.highlight-valid {
   z-index: 100 !important;
   cursor: pointer;
   border-width: 3px;
   /* Louder border */
 }
 
-.token.red.highlight-valid {
+.token-body.red.highlight-valid {
   box-shadow:
     0 0 10px #000,
     0 0 20px var(--color-red),
@@ -947,7 +987,7 @@ body::before {
   animation: pulse-ring-red 1.2s infinite, token-bounce 0.6s infinite alternate ease-in-out;
 }
 
-.token.green.highlight-valid {
+.token-body.green.highlight-valid {
   box-shadow:
     0 0 10px #000,
     0 0 20px var(--color-green),
@@ -956,7 +996,7 @@ body::before {
   animation: pulse-ring-green 1.2s infinite, token-bounce 0.6s infinite alternate ease-in-out;
 }
 
-.token.blue.highlight-valid {
+.token-body.blue.highlight-valid {
   box-shadow:
     0 0 10px #000,
     0 0 20px var(--color-blue),
@@ -965,7 +1005,7 @@ body::before {
   animation: pulse-ring-blue 1.2s infinite, token-bounce 0.6s infinite alternate ease-in-out;
 }
 
-.token.yellow.highlight-valid {
+.token-body.yellow.highlight-valid {
   box-shadow:
     0 0 10px #000,
     0 0 20px var(--color-yellow),
@@ -1030,22 +1070,17 @@ body::before {
   }
 }
 
-@keyframes token-highlight-bounce {
-  0% {
-    transform: scale(1) translateY(0);
-  }
 
-  100% {
-    transform: scale(1.25) translateY(-6px);
-  }
-}
 
 /* Capturable Target Highlight */
-.token.highlight-target {
+.token-body.highlight-target {
+  z-index: 99 !important;
+}
+
+.token-body.highlight-target .token-face {
   box-shadow: 0 0 0 4px rgba(255, 0, 0, 0.9), 0 0 20px 5px rgba(255, 0, 0, 1);
   border: 2px solid #ff4d4d;
   animation: target-pulse 1.2s infinite ease-in-out;
-  z-index: 99 !important;
 }
 
 @keyframes target-pulse {
