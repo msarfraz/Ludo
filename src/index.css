@@ -456,6 +456,17 @@ body::before {
   box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.2);
 }
 
+.triangle-top,
+.triangle-bottom,
+.triangle-left,
+.triangle-right {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
 /* Richer Triangles */
 .triangle-top {
   background: linear-gradient(to bottom, var(--color-yellow), var(--color-yellow-light), var(--color-yellow));
