@@ -108,24 +108,16 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
             let blockedByOpponentDouble = false;
             PLAYER_ORDER.forEach(pColor => {
-                if (pColor === tokenColor) return;
-
-                // Team Mode: Is pColor a teammate?
-                let isTeammate = false;
-                if (isTeamMode) {
-                    const idx1 = PLAYER_ORDER.indexOf(tokenColor);
-                    const idx2 = PLAYER_ORDER.indexOf(pColor);
-                    if (Math.abs(idx1 - idx2) === 2) isTeammate = true;
-                }
-
-                // Usually teammates don't block? Let's assume Teammate Double is safe to cross/land/spawn?
-                // User requirement just said "share dice". 
-                // But blockade rule says "Opponent Double". Teammate is not opponent.
-                if (isTeammate) return;
-
                 const pOffset = PATH_OFFSETS[pColor];
                 const pRelative = (startGlobal - pOffset + 52) % 52;
-                const oppTokens = gameState[pColor].filter(t => t.stepsMoved === pRelative);
+                const pIsLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
+
+                const oppTokens = gameState[pColor].filter(t => {
+                    if (t.stepsMoved === -1 || t.stepsMoved >= 56) return false;
+                    if (!pIsLocked && t.stepsMoved > 51) return false;
+                    return (t.stepsMoved % 52) === pRelative;
+                });
+
                 if (oppTokens.length >= 2) {
                     blockedByOpponentDouble = true;
                 }
@@ -138,12 +130,12 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         }
 
         // Check moves from current+1 to target
-        const startStep = token.stepsMoved + 1;
-        const endStep = token.stepsMoved + diceValue;
+        const startStep = (token.stepsMoved === -1) ? 1 : token.stepsMoved + 1;
+        const endStep = (token.stepsMoved === -1) ? 1 : token.stepsMoved + diceValue;
 
         for (let step = startStep; step < endStep; step++) {
             // Check if there is a double at this step
-            if (step > 50 && !isMasterLocked) continue; // Home stretch usually no blocking
+            if (step > 51 && !isMasterLocked) continue; // Home stretch usually no blocking
 
             const offset = PATH_OFFSETS[tokenColor];
             const globalIndex = (offset + step) % 52;
@@ -151,32 +143,21 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
             if (isSpotSafe) continue; // Doubles on safe spots don't block
 
-            // Check for doubles at globalIndex (ANY Double: Own or Opponent)
+            // Check for doubles at globalIndex (ANY Double: Own, Teammate, or Opponent)
             let doubleFound = false;
             PLAYER_ORDER.forEach(pColor => {
-                // Team Mode: Teammate double should NOT block?
-                let isTeammate = false;
-                if (isTeamMode && pColor !== tokenColor) {
-                    const idx1 = PLAYER_ORDER.indexOf(tokenColor);
-                    const idx2 = PLAYER_ORDER.indexOf(pColor);
-                    if (Math.abs(idx1 - idx2) === 2) isTeammate = true;
-                }
-
-                // If isTeammate, skip strict blockade check?
-                // But rule is "Opponent Double" blocks. "Pass over opponent double".
-                // So Teammate double does not block.
-                if (isTeammate) return;
-
                 const pOffset = PATH_OFFSETS[pColor];
-                const pRelativeStep = (globalIndex - pOffset + 52) % 52;
+                const pIsLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
 
                 const tokensAtStep = gameState[pColor].filter(t => {
-                    const isOpponentLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
-                    const maxStep = isOpponentLocked ? 51 : 50;
-                    return t.stepsMoved === pRelativeStep && t.stepsMoved <= maxStep;
+                    if (t.stepsMoved === -1 || t.stepsMoved >= 56) return false;
+                    if (!pIsLocked && t.stepsMoved > 51) return false;
+                    const tokenGlobalIndex = (pOffset + t.stepsMoved) % 52;
+                    return tokenGlobalIndex === globalIndex;
                 });
+
                 if (tokensAtStep.length >= 2) {
-                    doubleFound = true; // Found a double
+                    doubleFound = true;
                 }
             });
 
@@ -198,21 +179,17 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 // Check neighbors
                 let opponentDoubleAtLand = false;
                 PLAYER_ORDER.forEach(pColor => {
-                    if (pColor === tokenColor) return;
-
-                    // Team check
-                    if (isTeamMode) {
-                        const idx1 = PLAYER_ORDER.indexOf(tokenColor);
-                        const idx2 = PLAYER_ORDER.indexOf(pColor);
-                        if (Math.abs(idx1 - idx2) === 2) return; // Teammate double doesn't count as "Opponent Double" for capture restriction
-                    }
-
                     const pOffset = PATH_OFFSETS[pColor];
-                    const pOneStep = (globalLandIndex - pOffset + 52) % 52;
-                    const isOpponentLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
-                    const maxStep = isOpponentLocked ? 51 : 50;
-                    const oppTokens = gameState[pColor].filter(t => t.stepsMoved === pOneStep && t.stepsMoved <= maxStep);
-                    if (oppTokens.length >= 2) {
+                    const pIsLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
+
+                    const oppTokensAtSpot = gameState[pColor].filter(t => {
+                        if (t.stepsMoved === -1 || t.stepsMoved >= 56) return false;
+                        if (!pIsLocked && t.stepsMoved > 51) return false;
+                        const tokenGlobalIndex = (pOffset + t.stepsMoved) % 52;
+                        return tokenGlobalIndex === globalLandIndex;
+                    });
+
+                    if (oppTokensAtSpot.length >= 2) {
                         opponentDoubleAtLand = true;
                     }
                 });

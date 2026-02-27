@@ -224,7 +224,7 @@ body::before {
 }
 
 .tray-content-wrapper {
-  width: min(65vh, 85vw);
+  width: min(70vh, 88vw);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -244,8 +244,8 @@ body::before {
   display: flex;
   justify-content: center;
   align-items: center;
-  width: min(65vh, 85vw);
-  height: min(65vh, 85vw);
+  width: min(70vh, 88vw);
+  height: min(70vh, 88vw);
   padding: 12px;
   background: linear-gradient(135deg, #1e293b, #0f172a);
   border-radius: 20px;
@@ -310,8 +310,8 @@ body::before {
 }
 
 .home-inner-box {
-  width: 65%;
-  height: 65%;
+  width: 55%;
+  height: 55%;
   background: rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   display: grid;
@@ -443,7 +443,7 @@ body::before {
   justify-content: center;
   align-items: center;
   position: relative;
-  transform: scale(1.5);
+  transform: scale(1.1);
   /* Make tokens in home base 1.5x larger */
 }
 
@@ -577,18 +577,77 @@ body::before {
 }
 
 .token-body {
-  width: 80%;
-  height: 80%;
+  width: 95%;
+  height: 95%;
   border-radius: 50%;
   z-index: 10;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
-  border: 1.5px solid rgba(0, 0, 0, 0.3);
+  /* Reduced border for a cleaner coin rim */
+  border: 1.5px solid rgba(0, 0, 0, 0.2);
   display: flex;
   justify-content: center;
   align-items: center;
   transform-style: preserve-3d;
+}
+
+/* 3D Coin Edge effect with pronounced ridged (milled) lines */
+.token-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  z-index: -1;
+  transition: all 0.3s ease;
+  /* More pronounced ridged texture with high contrast */
+  background: repeating-conic-gradient(from 0deg,
+      rgba(0, 0, 0, 0.4) 0deg 1.5deg,
+      rgba(255, 255, 255, 0.25) 1.5deg 3deg);
+  -webkit-mask: radial-gradient(circle, transparent 66%, black 67%);
+  mask: radial-gradient(circle, transparent 66%, black 67%);
+  /* Add a metallic sheen overlay on the ridges */
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+/* Color-specific 3D Sides with depth */
+.token-body.red::before {
+  background-color: var(--color-red-dark);
+  box-shadow:
+    0 1px 0 var(--color-red-dark),
+    0 2px 0 var(--color-red-dark),
+    0 3px 0 var(--color-red-dark),
+    0 5px 10px rgba(0, 0, 0, 0.4);
+}
+
+.token-body.green::before {
+  background-color: var(--color-green-dark);
+  box-shadow:
+    0 1px 0 var(--color-green-dark),
+    0 2px 0 var(--color-green-dark),
+    0 3px 0 var(--color-green-dark),
+    0 5px 10px rgba(0, 0, 0, 0.4);
+}
+
+.token-body.yellow::before {
+  background-color: var(--color-yellow-dark);
+  box-shadow:
+    0 1px 0 var(--color-yellow-dark),
+    0 2px 0 var(--color-yellow-dark),
+    0 3px 0 var(--color-yellow-dark),
+    0 5px 10px rgba(0, 0, 0, 0.4);
+}
+
+.token-body.blue::before {
+  background-color: var(--color-blue-dark);
+  box-shadow:
+    0 1px 0 var(--color-blue-dark),
+    0 2px 0 var(--color-blue-dark),
+    0 3px 0 var(--color-blue-dark),
+    0 5px 10px rgba(0, 0, 0, 0.4);
 }
 
 @keyframes token-float {
@@ -611,41 +670,43 @@ body::before {
   }
 
   100% {
-    transform: scale(1.15);
+    transform: scale(1.1);
   }
 }
 
 .token-body:hover {
-  transform: translateY(-8px) scale(1.1);
-  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+  transform: translateY(-8px) scale(1.05);
+}
+
+/* Maintain depth on hover */
+.token-body:hover::before {
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.2),
+    0 2px 0 rgba(0, 0, 0, 0.2),
+    0 3px 0 rgba(0, 0, 0, 0.2),
+    0 4px 0 rgba(0, 0, 0, 0.2),
+    0 15px 30px rgba(0, 0, 0, 0.4) !important;
 }
 
 .token-body.red {
-  background: radial-gradient(circle at 30% 30%, var(--color-red-light), var(--color-red));
-  box-shadow: 0 4px 10px rgba(234, 67, 53, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, var(--color-red-light) 0%, var(--color-red) 100%);
   border-color: var(--color-red-dark);
 }
 
 .token-body.green {
-  background: radial-gradient(circle at 30% 30%, var(--color-green-light), var(--color-green));
-  box-shadow: 0 4px 10px rgba(52, 168, 83, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, var(--color-green-light) 0%, var(--color-green) 100%);
   border-color: var(--color-green-dark);
 }
 
 .token-body.yellow {
-  background: radial-gradient(circle at 30% 30%, var(--color-yellow-light), var(--color-yellow));
-  box-shadow: 0 4px 10px rgba(251, 188, 5, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, var(--color-yellow-light) 0%, var(--color-yellow) 100%);
   border-color: var(--color-yellow-dark);
 }
 
 .token-body.blue {
-  background: radial-gradient(circle at 30% 30%, var(--color-blue-light), var(--color-blue));
-  box-shadow: 0 4px 10px rgba(66, 133, 244, 0.4), inset 0 -4px 6px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, var(--color-blue-light) 0%, var(--color-blue) 100%);
   border-color: var(--color-blue-dark);
 }
-
-/* Removed token-inner (gloss effect) for flat face design */
-
 
 .token-face {
   width: 100%;
@@ -656,6 +717,8 @@ body::before {
   align-items: center;
   border-radius: 50%;
   overflow: hidden;
+  /* Simulate the raised rim with an inner shadow */
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 .token-shine {
@@ -664,29 +727,32 @@ body::before {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%, rgba(0, 0, 0, 0.1) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 40%, rgba(0, 0, 0, 0.05) 100%);
   pointer-events: none;
   z-index: 3;
 }
 
 .token-inner {
   position: absolute;
-  top: 10%;
-  left: 10%;
-  width: 80%;
-  height: 80%;
+  top: 12%;
+  left: 12%;
+  width: 76%;
+  height: 76%;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.03);
+  /* The "recessed" face look */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
   z-index: 1;
 }
 
 .token-svg {
   width: 60%;
   height: 60%;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) brightness(1.2) contrast(1.1);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
   position: relative;
   z-index: 2;
+  opacity: 0.8;
 }
 
 .token-body path {
