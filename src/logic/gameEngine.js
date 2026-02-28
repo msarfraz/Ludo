@@ -73,6 +73,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         const tokensAtSpot = currentTokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved <= mainPathLimit);
         const isDoubled = tokensAtSpot.length >= 2;
         const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52);
+        const actuallyMovingPair = isDoubled && !isSafe && (diceValue % 2 === 0);
 
         if (isDoubled) {
             // Rule: Double tokens can only be separated on safe spots.
@@ -80,20 +81,11 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             // Pair move requires EVEN dice.
             if (!isSafe) {
                 if (diceValue % 2 !== 0) return false; // Odd dice cannot move unsplit pair
-                // Even dice moves pair half steps
-                if (token.stepsMoved + (diceValue / 2) > 56) return false;
-            } else {
-                // Safe spot: Can move as pair (if even) or single (if odd or even)
-                // If dice is even, we intuitively prioritize pair move, but single is also valid logic-wise.
-                // But for "can I move at all?", valid is valid.
-                // We'll return true if either is possible.
-                // Single move check:
-                if (token.stepsMoved + diceValue <= 56) return true;
-                // Pair move check:
-                if (diceValue % 2 === 0 && token.stepsMoved + (diceValue / 2) <= 56) return true;
-                return false;
             }
         }
+
+        const moveSteps = actuallyMovingPair ? (diceValue / 2) : diceValue;
+        if (!isMasterLocked && token.stepsMoved + moveSteps > 56) return false;
 
         // Blockade Check (Rule: No single token can pass over a double token unless on safe spot)
 
@@ -131,7 +123,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
 
         // Check moves from current+1 to target
         const startStep = (token.stepsMoved === -1) ? 1 : token.stepsMoved + 1;
-        const endStep = (token.stepsMoved === -1) ? 1 : token.stepsMoved + diceValue;
+        const endStep = (token.stepsMoved === -1) ? 1 : token.stepsMoved + moveSteps;
 
         for (let step = startStep; step < endStep; step++) {
             // Check if there is a double at this step
@@ -161,14 +153,14 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 }
             });
 
-            if (doubleFound) {
+            if (doubleFound && !actuallyMovingPair) {
                 return false;
             }
         }
 
         // Capture Restriction (Rule: Single token cannot capture an opponent Double)
         // Check landing spot
-        const landSteps = token.stepsMoved === -1 ? 0 : token.stepsMoved + diceValue;
+        const landSteps = token.stepsMoved === -1 ? 0 : token.stepsMoved + moveSteps;
         // Correct landing for lock:
         const actualLandSteps = isMasterLocked && landSteps > 50 ? (landSteps % 52) : landSteps;
 
@@ -195,10 +187,6 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 });
 
                 const isMovingPair = isDoubled && (!isSafe || (diceValue % 2 === 0));
-                // Note: moveToken has separation logic.
-                // If split permitted (Safe Spot), we split -> Single move.
-                // If not split permitted (Not safe), we move Pair.
-                const actuallyMovingPair = isDoubled && !isSafe && (diceValue % 2 === 0);
 
                 if (!actuallyMovingPair && opponentDoubleAtLand) {
                     return false; // Single cannot land on Opponent Double
@@ -207,7 +195,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         }
 
         // Rule: Single token cannot share place with doubles of same player (No Triples)
-        const landStepsOwn = token.stepsMoved === -1 ? 0 : token.stepsMoved + diceValue;
+        const landStepsOwn = token.stepsMoved === -1 ? 0 : token.stepsMoved + moveSteps;
         const ownTokensAtLand = currentTokens.filter(t => t.stepsMoved === landStepsOwn && t.id !== token.id);
 
         if (ownTokensAtLand.length >= 2) {
@@ -280,8 +268,8 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 }
             });
 
-            // Check Teammate ONLY IF own moves are empty (Restore Priority)
-            if (isTeamMode && validMoves.length === 0) {
+            // Check Teammate
+            if (isTeamMode) {
                 const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
                 const teammateIdx = (currentIdx + 2) % 4;
                 const teammateColor = PLAYER_ORDER[teammateIdx];
@@ -313,11 +301,19 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                     // Just pick the first one.
                     const moveTarget = validMoves[0];
 
-                    // BUG FIX: Inhibit auto-move for doubles (manual choice required)
+                    // Relaxed Inhibit auto-move for doubles: only inhibit if it's NOT a forced pair move
                     const tokensAtSpot = gameState[moveTarget.color].filter(t => t.stepsMoved === moveTarget.steps && t.stepsMoved !== -1 && t.stepsMoved < 51);
                     if (tokensAtSpot.length > 1) {
-                        console.log("Inhibiting auto-move for double token.");
-                        return;
+                        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[moveTarget.color] + moveTarget.steps) % 52);
+                        const mustMoveAsPair = !isSafe && (dice.value % 2 === 0);
+
+                        // If it's a double on a non-safe spot with an odd dice, it can't move anyway (blocked by isValidMove).
+                        // If it's on a safe spot, it could split, so we SHOULD inhibit to let user choose which one to move.
+                        // If it's a forced pair move (non-safe, even dice), and it's the only valid move, we auto-move.
+                        if (!mustMoveAsPair) {
+                            console.log("Inhibiting auto-move for split-capable double token.");
+                            return;
+                        }
                     }
 
                     console.log("Auto-moving unique logical option...");
