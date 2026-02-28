@@ -296,7 +296,7 @@ body::before {
   position: relative;
 }
 
-/* Home Bases */
+/* Home Bases - Eye-Candy Design */
 .home-base {
   grid-row: span 6;
   grid-column: span 6;
@@ -304,59 +304,125 @@ body::before {
   justify-content: center;
   align-items: center;
   position: relative;
-  transition: all 0.3s ease;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  box-shadow: var(--shadow-inner);
+  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
 .home-inner-box {
-  width: 55%;
-  height: 55%;
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 16px;
+  width: 58%;
+  height: 58%;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  padding: 12%;
+  padding: 10%;
   gap: 15%;
   box-shadow:
-    inset 0 4px 12px rgba(0, 0, 0, 0.15),
-    0 2px 4px rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+    inset 0 4px 15px rgba(255, 255, 255, 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  z-index: 2;
 }
 
-/* Cleaned up redundant selectors */
-
-.home-base::after {
+.home-base::before {
   content: "";
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 50%, rgba(0, 0, 0, 0.2) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, transparent 50%, rgba(0, 0, 0, 0.2) 100%);
   pointer-events: none;
+  z-index: 1;
 }
 
+/* Eye-Candy Mesh Gradients */
 .home-green {
-  background: radial-gradient(circle at 35% 35%, var(--color-green-light), var(--color-green));
+  background:
+    radial-gradient(circle at 20% 20%, var(--color-green-light), transparent 50%),
+    radial-gradient(circle at 80% 80%, var(--color-green-dark), transparent 50%),
+    var(--color-green);
   grid-area: 1 / 1 / 7 / 7;
 }
 
 .home-yellow {
-  background: radial-gradient(circle at 35% 35%, var(--color-yellow-light), var(--color-yellow));
+  background:
+    radial-gradient(circle at 20% 20%, var(--color-yellow-light), transparent 50%),
+    radial-gradient(circle at 80% 80%, var(--color-yellow-dark), transparent 50%),
+    var(--color-yellow);
   grid-area: 1 / 10 / 7 / 16;
 }
 
 .home-red {
-  background: radial-gradient(circle at 35% 35%, var(--color-red-light), var(--color-red));
+  background:
+    radial-gradient(circle at 20% 20%, var(--color-red-light), transparent 50%),
+    radial-gradient(circle at 80% 80%, var(--color-red-dark), transparent 50%),
+    var(--color-red);
   grid-area: 10 / 1 / 16 / 7;
 }
 
 .home-blue {
-  background: radial-gradient(circle at 35% 35%, var(--color-blue-light), var(--color-blue));
+  background:
+    radial-gradient(circle at 20% 20%, var(--color-blue-light), transparent 50%),
+    radial-gradient(circle at 80% 80%, var(--color-blue-dark), transparent 50%),
+    var(--color-blue);
   grid-area: 10 / 10 / 16 / 16;
+}
+
+/* Active Turn Animations */
+.home-base.active-turn {
+  box-shadow:
+    inset 0 0 60px rgba(255, 255, 255, 0.4),
+    0 0 40px rgba(255, 255, 255, 0.2);
+  z-index: 5;
+  transform: scale(1.02);
+}
+
+.active-turn::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg,
+      transparent 45%,
+      rgba(255, 255, 255, 0.3) 50%,
+      transparent 55%);
+  animation: house-shimmer 3s infinite linear;
+  pointer-events: none;
+  z-index: 3;
+}
+
+@keyframes house-shimmer {
+  0% {
+    transform: translate(-30%, -30%) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(30%, 30%) rotate(0deg);
+  }
+}
+
+.home-base.active-turn .home-inner-box {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 0 20px rgba(255, 255, 255, 0.3),
+    inset 0 0 15px rgba(255, 255, 255, 0.2);
+  animation: house-pulse 2s infinite alternate ease-in-out;
+}
+
+@keyframes house-pulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.05);
+  }
 }
 
 /* Permanent Tray Styles (Simplified) */
