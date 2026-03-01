@@ -386,7 +386,7 @@ const LudoBoard = ({
                                             width: '100%',
                                             height: '100%',
                                             pointerEvents: 'none',
-                                            transition: 'grid-row 0.4s ease-out, grid-column 0.4s ease-out' // Smooth board movement
+                                            transition: 'grid-row 0.25s ease-out, grid-column 0.25s ease-out' // Smooth board movement
                                         }}
                                     >
                                         <div style={{

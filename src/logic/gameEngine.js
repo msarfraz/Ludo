@@ -92,35 +92,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         // If exiting home (-1 -> 0), we don't traverse. We just spawn. 
         // So no path blocking check needed. 
         if (token.stepsMoved === -1) {
-            // We are spawning at 0. 
-            const offset = PATH_OFFSETS[tokenColor];
-            const startGlobal = offset % 52;
-
-            // 1. Check if start cell has opponent Double (Blockade at spawn)
-            let blockedByOpponentDouble = false;
-            PLAYER_ORDER.forEach(pColor => {
-                if (pColor === tokenColor) return;
-                const pOffset = PATH_OFFSETS[pColor];
-                const pIsLocked = gameMode === GAME_MODES.MASTER && !playerData[pColor]?.hasCaptured;
-
-                const oppTokens = gameState[pColor].filter(t => {
-                    if (t.stepsMoved === -1 || t.stepsMoved >= 56) return false;
-                    if (!pIsLocked && t.stepsMoved > 51) return false;
-                    const tGlobal = (pOffset + t.stepsMoved) % 52;
-                    return tGlobal === startGlobal;
-                });
-
-                if (oppTokens.length >= 2) {
-                    blockedByOpponentDouble = true;
-                }
-            });
-
-            if (blockedByOpponentDouble) return false;
-
-            // 2. Check if start cell has own Double (No Triples)
-            const ownAtStart = currentTokens.filter(t => t.stepsMoved === 0);
-            if (ownAtStart.length >= 2) return false;
-
+            // House exit always allowed on a 6 regardless of start-cell occupancy (Safe Spot)
             return true;
         }
 
@@ -198,17 +170,16 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         }
 
         // Rule: Single token cannot share place with doubles of same player (No Triples)
+        // EXCEPTION: Safe spots and Finish line allow any number of tokens
         const landStepsOwn = token.stepsMoved === -1 ? 0 : token.stepsMoved + moveSteps;
-
-        // Finish line (Step 56) allows any number of tokens
         if (landStepsOwn >= 56) return true;
 
-        const ownTokensAtLand = currentTokens.filter(t => t.stepsMoved === landStepsOwn && t.id !== token.id);
+        const offset = PATH_OFFSETS[tokenColor];
+        const globalLandIndex = (offset + landStepsOwn) % 52;
+        if (isGloballySafe(globalLandIndex)) return true;
 
-        if (ownTokensAtLand.length >= 2) {
-            // Target already has a double. Cannot form Triple.
-            return false;
-        }
+        const ownTokensAtLand = currentTokens.filter(t => t.stepsMoved === landStepsOwn && t.id !== token.id);
+        if (ownTokensAtLand.length >= 2) return false;
 
         return true;
     }, [gameMode, playerData, gameState, isTeamMode]);
@@ -219,7 +190,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
             if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
             prevTurnTimerRef.current = setTimeout(() => {
                 setPrevTurnData({ color: null, value: 0, queue: [] });
-            }, 2000);
+            }, 1000);
         }
 
         setTurn(prev => (prev + 1) % 4);
@@ -297,7 +268,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 const timeoutId = setTimeout(() => {
                     moveToken(moveTarget.id, moveTarget.color);
                     pendingAutoMoveRef.current = null;
-                }, 1500);
+                }, 600);
                 return () => clearTimeout(timeoutId);
             } else if (validMoves.length > 1) {
                 // Check if all valid moves are effectively "the same move" (e.g. splitting any token of a double on a safe spot, or moving pair)
@@ -332,7 +303,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                     const timeoutId = setTimeout(() => {
                         moveToken(moveTarget.id, moveTarget.color);
                         pendingAutoMoveRef.current = null;
-                    }, 1500);
+                    }, 600);
                     return () => clearTimeout(timeoutId);
                 }
             }
@@ -374,7 +345,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                         setSelectedDiceId(null);
                         setIsVoidingTurn(false);
                         nextTurn(); // Already waited 2s on this turn, no need to show in legacy
-                    }, 2000); // 2 second delay to show the "triple six"
+                    }, 1000); // 1 second delay to show the "triple six"
                     return;
                 }
 
@@ -388,9 +359,9 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                 const newDice = { id: Date.now() + Math.random(), value: val };
                 setDiceQueue(prev => [...prev, newDice]);
                 setCanRoll(false);
-                setConsecutiveSixes(0);
+                // Do NOT reset consecutiveSixes here; it must be cumulative for the whole turn
             }
-        }, 400);
+        }, 200);
     };
 
     const selectDice = (id) => {
@@ -567,7 +538,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         } else if (remainingQueue.length === 0 && !canRoll) {
             // Add a short delay before passing turn to let user see the final move animation
             // Since it's utilized, DO NOT pass it into legacy tray
-            setTimeout(() => nextTurn(), 500);
+            setTimeout(() => nextTurn(), 250);
         }
     };
 
