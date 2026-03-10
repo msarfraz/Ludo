@@ -5,6 +5,7 @@ import { getBoardCoordinates } from '../utils/boardUtils';
 import { PATH_COORDINATES, HOME_PATHS } from '../constants/boardData';
 import { SAFE_SPOTS as SAFE_SPOTS_INDICES } from '../constants/gameConstants';
 import { PLAYER_ORDER, GAME_MODES } from '../constants/gameConstants';
+import { playMoveSound } from '../utils/soundUtils';
 
 const LudoBoard = ({
     gameState,
@@ -18,15 +19,27 @@ const LudoBoard = ({
     capturableTokens = [],
     activeMoveSelection = null,
     onSelectMove,
-    onCancelMove
+    onCancelMove,
+    playerCount = 4,
+    onPlayerExit,
+    exitedPlayers = [],
+    finishOrder = [],
+    onExit,
+    children
 }) => {
-    // ... logic ...
+    const activePlayersIndices = isTeamMode ? [0, 1, 2, 3] : (playerCount === 2 ? [0, 2] : (playerCount === 3 ? [0, 1, 2] : [0, 1, 2, 3]));
+    const activePlayers = activePlayersIndices.map(i => PLAYER_ORDER[i])
+        .filter(color => !exitedPlayers.includes(color));
+
     const isTeammateColor = (color) => {
         if (!isTeamMode) return false;
         const currIdx = PLAYER_ORDER.indexOf(currentPlayer);
         const colorIdx = PLAYER_ORDER.indexOf(color);
         return Math.abs(currIdx - colorIdx) === 2;
     };
+
+    // Custom Dialog States
+    const [confirmingExit, setConfirmingExit] = useState(null); // Color of player confirming exit
 
     // Visual State for Animation
     const [visualState, setVisualState] = useState(gameState);
@@ -38,12 +51,12 @@ const LudoBoard = ({
     useEffect(() => {
         // Find tokens that have moved FORWARD (not reset to home)
         const movingTokens = [];
-        PLAYER_ORDER.forEach(color => {
-            const currentTokens = gameState[color];
-            const prevTokens = visualState[color];
+        activePlayers.forEach(color => {
+            const tokens = visualState[color];
+            const currentLogical = gameState[color];
 
-            currentTokens.forEach(curr => {
-                const prev = prevTokens.find(p => p.id === curr.id);
+            currentLogical.forEach(curr => {
+                const prev = tokens.find(p => p.id === curr.id);
                 if (prev) {
                     const wrappedAround = prev.stepsMoved > 45 && curr.stepsMoved >= 0 && curr.stepsMoved < 15;
                     if (curr.stepsMoved > prev.stepsMoved || wrappedAround) {
@@ -88,6 +101,8 @@ const LudoBoard = ({
                         return newState;
                     });
 
+                    playMoveSound();
+
                     // Continue animation loop
                     animationRef.current = setTimeout(animateStep, 200); // 200ms per step
                 } else {
@@ -99,7 +114,21 @@ const LudoBoard = ({
             animateStep();
         } else {
             // No forward movement (e.g. valid immediate sync or reset/capture)
-            // For captures (X -> -1), we sync immediately for now
+            // For captures (X -> -1), we sync immediately
+            const oldTokens = visualState;
+            const newTokens = gameState;
+            let captured = false;
+
+            activePlayers.forEach(color => {
+                newTokens[color].forEach((token, i) => {
+                    if (token.stepsMoved === -1 && oldTokens[color][i].stepsMoved !== -1) {
+                        captured = true;
+                    }
+                });
+            });
+
+            if (captured) playMoveSound(); // Play once for capture/reset
+
             setVisualState(gameState);
         }
 
@@ -138,7 +167,7 @@ const LudoBoard = ({
 
     // Group tokens by cell to handle overlaps (Render based on VISUAL STATE)
     const boardTokens = [];
-    PLAYER_ORDER.forEach(color => {
+    activePlayers.forEach(color => {
         // Use visualState for rendering
         visualState[color].forEach(token => {
             const style = getTokenStyle(color, token);
@@ -173,14 +202,17 @@ const LudoBoard = ({
     const renderHomeBase = (color, cssClass) => {
         const isCurrent = currentPlayer === color;
         const isTeam = isTeammateColor(color);
+        const isActive = activePlayers.includes(color);
+        const finishRank = finishOrder.indexOf(color) + 1;
+        const rankSuffix = finishRank === 1 ? 'st' : (finishRank === 2 ? 'nd' : (finishRank === 3 ? 'rd' : ''));
 
         return (
-            <div className={`home-base ${cssClass} ${isCurrent ? 'active-turn' : ''} ${isTeam ? 'teammate-turn' : ''}`}>
+            <div className={`home-base ${cssClass} ${isCurrent ? 'active-turn' : ''} ${isTeam ? 'teammate-turn' : ''} ${!isActive ? 'inactive-house' : ''}`}>
                 <div className="home-inner-box">
                     {/* Render Home Token Sockets (Always 4) */}
                     {[0, 1, 2, 3].map(id => {
                         const tokenAtHome = visualState[color].find(t => t.id === id && t.stepsMoved === -1);
-                        const isValid = tokenAtHome ? validTokens.includes(`${color}-${id}`) : false;
+                        const isValid = (isActive && tokenAtHome) ? validTokens.includes(`${color}-${id}`) : false;
 
                         return (
                             <div
@@ -190,7 +222,7 @@ const LudoBoard = ({
                                     zIndex: (activeMoveSelection?.tokenId === id && activeMoveSelection?.color === color) ? 9999 : 1
                                 }}
                             >
-                                {tokenAtHome && (
+                                {isActive && tokenAtHome && (
                                     <Token
                                         color={color}
                                         onClick={(e) => {
@@ -211,6 +243,22 @@ const LudoBoard = ({
                         );
                     })}
                 </div>
+                {finishRank > 0 && finishRank <= 3 && (
+                    <div className={`winner-rank-badge rank-${finishRank}`}>
+                        <div className="rank-number">{finishRank}</div>
+                        <div className="rank-suffix">{rankSuffix}</div>
+                        <div className="rank-label">WINNER</div>
+                    </div>
+                )}
+                {!isCurrent && isActive && (
+                    <button
+                        className="player-exit-btn-house"
+                        onClick={() => setConfirmingExit(color)}
+                        title="Exit Player"
+                    >
+                        EXIT
+                    </button>
+                )}
             </div>
         );
     };
@@ -231,6 +279,11 @@ const LudoBoard = ({
 
         // All rolled dice shown in tray since main dice displays star
         const trayDice = currentRolls;
+
+        const isActivePlayer = activePlayers.includes(playerColor);
+        const hasExited = exitedPlayers.includes(playerColor);
+
+        if (!isActivePlayer || hasExited) return <div className={`tray-player-container inactive-tray active-${playerColor}`}></div>;
 
         return (
             <div className={`tray-player-container active-${playerColor} ${isActive ? 'active' : ''}`}>
@@ -284,10 +337,10 @@ const LudoBoard = ({
                     <div className="ludo-board-wrapper">
                         <div className="ludo-board">
                             {/* Render Houses */}
-                            {renderHomeBase('green', 'home-green')}
-                            {renderHomeBase('yellow', 'home-yellow')}
-                            {renderHomeBase('red', 'home-red')}
-                            {renderHomeBase('blue', 'home-blue')}
+                            {renderHomeBase('green', 'home-green top-left')}
+                            {renderHomeBase('yellow', 'home-yellow top-right')}
+                            {renderHomeBase('red', 'home-red bottom-left')}
+                            {renderHomeBase('blue', 'home-blue bottom-right')}
 
                             {/* Center Home - Triangular Layout */}
                             <div className="center-home">
@@ -432,6 +485,24 @@ const LudoBoard = ({
                         {renderDiceTray('blue')}
                     </div>
                 </div>
+                {children}
+
+                {/* Custom Confirmation Modal */}
+                {confirmingExit && (
+                    <div className="exit-confirm-overlay">
+                        <div className="exit-confirm-modal">
+                            <h3 className="confirm-title">EXIT PLAYER?</h3>
+                            <p className="confirm-desc">Are you sure you want the <span className={`color-text ${confirmingExit}`}>{confirmingExit.toUpperCase()}</span> player to leave the game?</p>
+                            <div className="confirm-actions">
+                                <button className="confirm-btn cancel" onClick={() => setConfirmingExit(null)}>STAY</button>
+                                <button className="confirm-btn proceed" onClick={() => {
+                                    onPlayerExit(confirmingExit);
+                                    setConfirmingExit(null);
+                                }}>EXIT</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

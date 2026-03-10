@@ -8,8 +8,8 @@ import './index.css';
 function App() {
   const [gameConfig, setGameConfig] = useState(null);
 
-  const handleStart = (mode, isTeamMode = false) => {
-    setGameConfig({ mode, isTeamMode });
+  const handleStart = (mode, isTeamMode = false, playerCount = 4) => {
+    setGameConfig({ mode, isTeamMode, playerCount });
   };
 
   return (
@@ -24,7 +24,7 @@ function App() {
 }
 
 const GameInstance = ({ config, onExit }) => {
-  const { mode, isTeamMode } = config;
+  const { mode, isTeamMode, playerCount } = config;
   const {
     gameState,
     currentPlayerColor,
@@ -41,8 +41,13 @@ const GameInstance = ({ config, onExit }) => {
     validTokenIds,
     capturableTokenIds,
     getValidDiceForToken,
-    getMovesToCaptureTarget
-  } = useLudoGame(mode, isTeamMode);
+    getMovesToCaptureTarget,
+    gameEnded,
+    gameWinner,
+    exitPlayer,
+    exitedPlayers,
+    finishOrder
+  } = useLudoGame(mode, isTeamMode, playerCount);
 
   const [activeMoveSelection, setActiveMoveSelection] = useState(null); // { tokenId, color, options }
 
@@ -125,7 +130,43 @@ const GameInstance = ({ config, onExit }) => {
       activeMoveSelection={activeMoveSelection}
       onSelectMove={handleSelectMove}
       onCancelMove={() => setActiveMoveSelection(null)}
-    />
+      playerCount={playerCount}
+      onPlayerExit={exitPlayer}
+      exitedPlayers={exitedPlayers}
+      finishOrder={finishOrder}
+      onExit={onExit}
+    >
+      {gameEnded && (
+        <div className="game-over-overlay">
+          <div className="game-over-banner">
+            <h2 className="banner-title">GAME END</h2>
+            <div className="winner-details">
+              <span className="winner-label">WINNER</span>
+              <div className="winner-name">
+                {gameWinner?.type === 'TEAM' ? (
+                  <div className="team-winner-display">
+                    <span style={{ color: `var(--color-${gameWinner.colors[0]})` }}>
+                      {gameWinner.colors[0].charAt(0).toUpperCase() + gameWinner.colors[0].slice(1)}
+                    </span>
+                    <span className="team-separator">&</span>
+                    <span style={{ color: `var(--color-${gameWinner.colors[1]})` }}>
+                      {gameWinner.colors[1].charAt(0).toUpperCase() + gameWinner.colors[1].slice(1)}
+                    </span>
+                  </div>
+                ) : (
+                  <span style={{ color: `var(--color-${gameWinner?.color})` }}>
+                    {gameWinner?.name}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button className="back-to-home-btn" onClick={onExit}>
+              PLAY AGAIN
+            </button>
+          </div>
+        </div>
+      )}
+    </LudoBoard>
   );
 };
 

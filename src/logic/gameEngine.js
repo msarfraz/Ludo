@@ -9,32 +9,25 @@ const PATH_OFFSETS = {
     [PLAYERS.RED]: 39
 };
 
-export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) => {
+export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false, playerCount = 4) => {
+    // 1. State Hooks
     const [turn, setTurn] = useState(0);
-    const [diceQueue, setDiceQueue] = useState([]); // Array of { id, value }
+    const [gameWinner, setGameWinner] = useState(null);
+    const [gameEnded, setGameEnded] = useState(false);
+    const [exitedPlayers, setExitedPlayers] = useState([]);
+    const [diceQueue, setDiceQueue] = useState([]);
     const [selectedDiceId, setSelectedDiceId] = useState(null);
     const [rolling, setRolling] = useState(false);
     const [canRoll, setCanRoll] = useState(true);
     const [lastRollValue, setLastRollValue] = useState(0);
     const [prevTurnData, setPrevTurnData] = useState({ color: null, value: 0, queue: [] });
-    const prevTurnTimerRef = useRef(null);
-    const [consecutiveSixes, setConsecutiveSixes] = useState(0);
     const [isVoidingTurn, setIsVoidingTurn] = useState(false);
-    const pendingAutoMoveRef = useRef(null);
-
-    // Final cleanup on unmount
-    useEffect(() => {
-        return () => {
-            if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
-        };
-    }, []);
+    const [finishOrder, setFinishOrder] = useState([]);
 
     const [playerData, setPlayerData] = useState(() => {
         const data = {};
         PLAYER_ORDER.forEach(p => {
-            data[p] = {
-                hasCaptured: false
-            };
+            data[p] = { hasCaptured: false };
         });
         return data;
     });
@@ -44,20 +37,120 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         PLAYER_ORDER.forEach(color => {
             initialState[color] = Array(PIECE_COUNT).fill(0).map((_, i) => ({
                 id: i,
-                stepsMoved: -1
+                stepsMoved: (gameMode === GAME_MODES.CLASSIC && i === 0) ? 0 : -1
             }));
         });
         return initialState;
     });
 
-    // Auto-select first dice if nothing selected and queue has items
+    // 2. Ref Hooks
+    const prevTurnTimerRef = useRef(null);
+    const pendingAutoMoveRef = useRef(null);
+
+    // Derived State (Regular variables, placed AFTER hooks)
+    const currentPlayerColor = PLAYER_ORDER[turn];
+    const activePlayers = (isTeamMode ? [0, 1, 2, 3] : (playerCount === 2 ? [0, 2] : (playerCount === 3 ? [0, 1, 2] : [0, 1, 2, 3])))
+        .filter(idx => !exitedPlayers.includes(PLAYER_ORDER[idx]));
+
+    // 3. Effects
+    useEffect(() => {
+        return () => {
+            if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
+        };
+    }, []);
+
     useEffect(() => {
         if (diceQueue.length > 0 && selectedDiceId === null) {
             setSelectedDiceId(diceQueue[0].id);
         }
     }, [diceQueue, selectedDiceId]);
 
-    const currentPlayerColor = PLAYER_ORDER[turn];
+    // Track Finishing Order
+    useEffect(() => {
+        PLAYER_ORDER.forEach(color => {
+            const finishedCount = gameState[color].filter(t => t.stepsMoved >= 56).length;
+            if (finishedCount === 4 && !finishOrder.includes(color)) {
+                setFinishOrder(prev => [...prev, color]);
+            }
+        });
+    }, [gameState, finishOrder]);
+
+    const isGloballySafe = (index) => {
+        return SAFE_SPOTS.includes(index);
+    };
+
+    const checkWinCondition = useCallback((currentState) => {
+        const finishedCounts = {};
+        PLAYER_ORDER.forEach(color => {
+            finishedCounts[color] = currentState[color].filter(t => t.stepsMoved >= 56).length;
+        });
+
+        if (isTeamMode) {
+            // Team 1: 0 & 2, Team 2: 1 & 3
+            if (finishedCounts[PLAYER_ORDER[0]] === 4 && finishedCounts[PLAYER_ORDER[2]] === 4) {
+                return { type: 'TEAM', colors: [PLAYER_ORDER[0], PLAYER_ORDER[2]], name: 'Green & Blue' };
+            }
+            if (finishedCounts[PLAYER_ORDER[1]] === 4 && finishedCounts[PLAYER_ORDER[3]] === 4) {
+                return { type: 'TEAM', colors: [PLAYER_ORDER[1], PLAYER_ORDER[3]], name: 'Yellow & Red' };
+            }
+        } else {
+            const winners = PLAYER_ORDER.filter(color => finishedCounts[color] === 4);
+            const targetWinners = playerCount - 1;
+            if (winners.length >= targetWinners) {
+                const winnerColor = winners[0];
+                return { type: 'PLAYER', color: winnerColor, name: winnerColor.charAt(0).toUpperCase() + winnerColor.slice(1) };
+            }
+        }
+        return null;
+    }, [isTeamMode, playerCount]);
+
+    const nextTurn = useCallback((finalValue = 0, finalQueue = []) => {
+        if (gameEnded) return;
+
+        // Check if current player just finished all pieces
+        const currentState = gameState; // Using current state is tricky in callbacks, but it works for simple check
+        const winner = checkWinCondition(currentState);
+        if (winner) {
+            setGameWinner(winner);
+            setGameEnded(true);
+            return;
+        }
+
+        if (finalQueue.length > 0) {
+            setPrevTurnData({ color: PLAYER_ORDER[turn], value: finalValue, queue: finalQueue });
+            if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
+            prevTurnTimerRef.current = setTimeout(() => {
+                setPrevTurnData({ color: null, value: 0, queue: [] });
+            }, 1000);
+        }
+
+        // Cycle through active players who haven't finished yet
+        let nextIdx = turn;
+        let found = false;
+        for (let i = 1; i <= 4; i++) {
+            const potential = (turn + i) % 4;
+            // Must be active AND not finished 4 tokens
+            if (activePlayers.includes(potential)) {
+                if (gameState[PLAYER_ORDER[potential]].filter(t => t.stepsMoved >= 56).length < 4) {
+                    nextIdx = potential;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found) {
+            // All players either finished or exited
+            setGameEnded(true);
+            return;
+        }
+
+        setTurn(nextIdx);
+        setDiceQueue([]);
+        setSelectedDiceId(null);
+        setCanRoll(true);
+        setLastRollValue(0);
+    }, [turn, activePlayers, gameState, gameEnded, checkWinCondition]);
 
     const isValidMove = useCallback((token, diceValue, tokenColor = currentPlayerColor) => {
         if (isVoidingTurn) return false;
@@ -71,7 +164,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         // If locked, main path extends to step 51
         const mainPathLimit = isMasterLocked ? 51 : 50;
         const tokensAtSpot = currentTokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved <= mainPathLimit);
-        const isDoubled = tokensAtSpot.length >= 2;
+        const isDoubled = gameMode === GAME_MODES.MASTER && tokensAtSpot.length >= 2;
         const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52) || (token.stepsMoved > 50 && token.stepsMoved < 56);
         const actuallyMovingPair = isDoubled && !isSafe && (diceValue % 2 === 0);
 
@@ -123,7 +216,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                     return tokenGlobalIndex === globalIndex;
                 });
 
-                if (tokensAtStep.length >= 2) {
+                if (tokensAtStep.length >= 2 && gameMode === GAME_MODES.MASTER) {
                     doubleFound = true;
                 }
             });
@@ -156,12 +249,10 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                         return tokenGlobalIndex === globalLandIndex;
                     });
 
-                    if (oppTokensAtSpot.length >= 2) {
+                    if (oppTokensAtSpot.length >= 2 && gameMode === GAME_MODES.MASTER) {
                         opponentDoubleAtLand = true;
                     }
                 });
-
-                const isMovingPair = isDoubled && (!isSafe || (diceValue % 2 === 0));
 
                 if (!actuallyMovingPair && opponentDoubleAtLand) {
                     return false; // Single cannot land on Opponent Double
@@ -179,27 +270,184 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         if (isGloballySafe(globalLandIndex)) return true;
 
         const ownTokensAtLand = currentTokens.filter(t => t.stepsMoved === landStepsOwn && t.id !== token.id);
-        if (ownTokensAtLand.length >= 2) return false;
+        if (ownTokensAtLand.length >= 2 && gameMode === GAME_MODES.MASTER) return false;
 
         return true;
-    }, [gameMode, playerData, gameState, isTeamMode]);
+    }, [gameMode, playerData, gameState, isTeamMode, currentPlayerColor, isGloballySafe]);
 
-    const nextTurn = useCallback((finalValue = 0, finalQueue = []) => {
-        if (finalQueue.length > 0) {
-            setPrevTurnData({ color: PLAYER_ORDER[turn], value: finalValue, queue: finalQueue });
-            if (prevTurnTimerRef.current) clearTimeout(prevTurnTimerRef.current);
-            prevTurnTimerRef.current = setTimeout(() => {
-                setPrevTurnData({ color: null, value: 0, queue: [] });
-            }, 1000);
+    const rollDice = useCallback(() => {
+        if (!canRoll) return;
+        setCanRoll(false);
+        setRolling(true);
+        setSelectedDiceId(null);
+        playDiceRollSound();
+        setLastRollValue(0);
+
+        setTimeout(() => {
+            const weightPool = [6, 1, 1, 6, 2, 2, 6, 3, 3, 6, 4, 4, 6, 5, 5, 6];
+            const val = weightPool[Math.floor(Math.random() * weightPool.length)];
+
+            setRolling(false);
+            setLastRollValue(val);
+
+            if (val === 6) {
+                const sixesInTray = diceQueue.filter(d => d.value === 6).length;
+                if (sixesInTray === 2) {
+                    setIsVoidingTurn(true);
+                    const newDice = { id: Date.now() + Math.random(), value: val };
+                    setDiceQueue([...diceQueue, newDice]);
+                    setCanRoll(false);
+                    setTimeout(() => {
+                        setDiceQueue([]);
+                        setSelectedDiceId(null);
+                        setIsVoidingTurn(false);
+                        nextTurn();
+                    }, 1000);
+                    return;
+                }
+                const newDice = { id: Date.now() + Math.random(), value: val };
+                setDiceQueue(prev => [...prev, newDice]);
+                setCanRoll(true);
+            } else {
+                const newDice = { id: Date.now() + Math.random(), value: val };
+                setDiceQueue(prev => [...prev, newDice]);
+                setCanRoll(false);
+            }
+        }, 200);
+    }, [canRoll, diceQueue, nextTurn]);
+
+    const selectDice = useCallback((id) => {
+        if (canRoll) return;
+        setSelectedDiceId(id);
+    }, [canRoll]);
+
+    const moveToken = useCallback((tokenId, tokenColor = currentPlayerColor, diceId = null) => {
+        if (isVoidingTurn) return;
+        if (canRoll) return;
+
+        const effectiveDiceId = diceId || selectedDiceId;
+        if (!effectiveDiceId) return;
+
+        const diceObj = diceQueue.find(d => d.id === effectiveDiceId);
+        if (!diceObj) return;
+        const moveValue = diceObj.value;
+
+        const tokens = gameState[tokenColor];
+        const token = tokens.find(t => t.id === tokenId);
+
+        if (!isValidMove(token, moveValue, tokenColor)) return;
+
+        if (tokenColor !== currentPlayerColor) {
+            if (!isTeamMode) return;
+            const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+            const tokenIdx = PLAYER_ORDER.indexOf(tokenColor);
+            if (Math.abs(currentIdx - tokenIdx) !== 2) return;
+            const anyOwnValid = gameState[currentPlayerColor].some(t => isValidMove(t, moveValue, currentPlayerColor));
+            if (anyOwnValid) return;
         }
 
-        setTurn(prev => (prev + 1) % 4);
-        setDiceQueue([]);
-        setSelectedDiceId(null);
-        setCanRoll(true);
-        setLastRollValue(0);
-        setConsecutiveSixes(0);
-    }, [turn]);
+        const tokensAtSpot = tokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
+        const isDoubled = gameMode === GAME_MODES.MASTER && tokensAtSpot.length >= 2;
+        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52);
+
+        let actualMoveSteps = moveValue;
+        let tokensToMove = [token];
+
+        if (isDoubled) {
+            if (isSafe) {
+                actualMoveSteps = moveValue;
+                tokensToMove = [token];
+            } else {
+                if (moveValue % 2 === 0) {
+                    actualMoveSteps = moveValue / 2;
+                    tokensToMove = [tokensAtSpot[0], tokensAtSpot[1]];
+                } else {
+                    return;
+                }
+            }
+        }
+
+        const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[tokenColor]?.hasCaptured;
+        let newSteps = (token.stepsMoved === -1) ? 0 : token.stepsMoved + actualMoveSteps;
+
+        if (isMasterLocked && newSteps > 50) {
+            newSteps = newSteps % 52;
+        }
+
+        let captureOccurred = false;
+        let newGameState = { ...gameState };
+        let newPlayerData = { ...playerData };
+
+        const goalReached = newSteps === 56;
+        if (newSteps <= 50 || (isMasterLocked && newSteps === 51)) {
+            const offset = PATH_OFFSETS[tokenColor];
+            const globalPathIndex = (offset + newSteps) % 52;
+
+            if (!isGloballySafe(globalPathIndex)) {
+                PLAYER_ORDER.forEach(pColor => {
+                    if (pColor === tokenColor) return;
+                    if (isTeamMode) {
+                        const idx1 = PLAYER_ORDER.indexOf(tokenColor);
+                        const idx2 = PLAYER_ORDER.indexOf(pColor);
+                        if (Math.abs(idx1 - idx2) === 2) return;
+                    }
+
+                    const opponentsAtSpot = newGameState[pColor].filter(oppToken => {
+                        const isOpponentLocked = gameMode === GAME_MODES.MASTER && !newPlayerData[pColor]?.hasCaptured;
+                        const maxStep = isOpponentLocked ? 51 : 50;
+                        if (oppToken.stepsMoved === -1 || oppToken.stepsMoved > maxStep) return false;
+                        const oppOffset = PATH_OFFSETS[pColor];
+                        return ((oppOffset + oppToken.stepsMoved) % 52) === globalPathIndex;
+                    });
+
+                    if (opponentsAtSpot.length > 0) {
+                        const isAttackerDouble = tokensToMove.length >= 2;
+                        const isDefenderDouble = gameMode === GAME_MODES.MASTER && opponentsAtSpot.length >= 2;
+
+                        if (!isAttackerDouble && isDefenderDouble) {
+                            captureOccurred = false;
+                        } else {
+                            captureOccurred = true;
+                            newPlayerData[tokenColor] = { hasCaptured: true };
+                            newGameState[pColor] = newGameState[pColor].map(oppToken => {
+                                if (opponentsAtSpot.some(o => o.id === oppToken.id)) {
+                                    return { ...oppToken, stepsMoved: -1 };
+                                }
+                                return oppToken;
+                            });
+                        }
+                    }
+                });
+            }
+        }
+
+        newGameState[tokenColor] = newGameState[tokenColor].map(t => {
+            if (tokensToMove.some(tm => tm.id === t.id)) {
+                return { ...t, stepsMoved: newSteps };
+            }
+            return t;
+        });
+
+        setGameState(newGameState);
+        setPlayerData(newPlayerData);
+
+        const remainingQueue = diceQueue.filter(d => d.id !== effectiveDiceId);
+        setDiceQueue(remainingQueue);
+
+        if (remainingQueue.length > 0) {
+            setSelectedDiceId(remainingQueue[0].id);
+        } else {
+            setSelectedDiceId(null);
+        }
+
+        if (captureOccurred || goalReached) {
+            setCanRoll(true);
+        } else if (remainingQueue.length === 0 && !canRoll) {
+            setTimeout(() => nextTurn(), 250);
+        }
+    }, [diceQueue, selectedDiceId, gameState, isValidMove, isTeamMode, currentPlayerColor, gameMode, playerData, nextTurn, isVoidingTurn, canRoll, isGloballySafe]);
+
+
 
     // Check for stuck state (no valid moves)
     useEffect(() => {
@@ -230,317 +478,103 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         }
     }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, nextTurn, isValidMove, isTeamMode]);
 
-    // Auto-Move Rule: If only one valid move exists, execute it.
+    // Auto-Move Rule: Execute only if exactly one unique logical outcome exists across ALL available dice.
     useEffect(() => {
         if (!rolling && !canRoll && diceQueue.length > 0 && selectedDiceId && pendingAutoMoveRef.current !== selectedDiceId && !isVoidingTurn) {
-            const dice = diceQueue.find(d => d.id === selectedDiceId);
-            if (!dice) return;
+            // Find ALL valid moves across ALL dice currently in the queue
+            const allLogicalMoves = [];
 
-            const currentTokens = gameState[currentPlayerColor];
-            let validMoves = []; // Objects {id, color}
-
-            // Check Own
-            currentTokens.forEach(token => {
-                if (isValidMove(token, dice.value, currentPlayerColor)) {
-                    validMoves.push({ id: token.id, color: currentPlayerColor, steps: token.stepsMoved });
+            diceQueue.forEach(dice => {
+                const colorsToCheck = [currentPlayerColor];
+                if (isTeamMode) {
+                    const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
+                    const teammateIdx = (currentIdx + 2) % 4;
+                    colorsToCheck.push(PLAYER_ORDER[teammateIdx]);
                 }
+
+                colorsToCheck.forEach(color => {
+                    const tokens = gameState[color];
+                    tokens.forEach(token => {
+                        if (isValidMove(token, dice.value, color)) {
+                            // Enforce teammate priority for auto-move calculation
+                            if (color !== currentPlayerColor) {
+                                const anyOwnValid = gameState[currentPlayerColor].some(t => isValidMove(t, dice.value, currentPlayerColor));
+                                if (anyOwnValid) return;
+                            }
+
+                            // Calculate logical target position to identify unique outcomes
+                            const targetSteps = token.stepsMoved === -1 ? 0 : token.stepsMoved + dice.value;
+                            const uniqueKey = `${color}-${token.id}-${targetSteps}`;
+
+                            if (!allLogicalMoves.find(m => m.key === uniqueKey)) {
+                                allLogicalMoves.push({
+                                    key: uniqueKey,
+                                    tokenId: token.id,
+                                    color,
+                                    diceId: dice.id,
+                                    isHome: token.stepsMoved === -1
+                                });
+                            }
+                        }
+                    });
+                });
             });
 
-            // Check Teammate
-            if (isTeamMode) {
-                const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
-                const teammateIdx = (currentIdx + 2) % 4;
-                const teammateColor = PLAYER_ORDER[teammateIdx];
-                gameState[teammateColor].forEach(token => {
-                    if (isValidMove(token, dice.value, teammateColor)) {
-                        validMoves.push({ id: token.id, color: teammateColor, steps: token.stepsMoved });
-                    }
-                });
-            }
+            // Auto-move only if there is exactly ONE choice left across the entire turn context
+            if (allLogicalMoves.length === 1) {
+                const moveTarget = allLogicalMoves[0];
 
-            // Determine uniqueness
-            if (validMoves.length === 1) {
-                const moveTarget = validMoves[0];
-                console.log("Auto-moving single option...");
+                // INHIBIT: If it's a house exit AND there are other dice in the tray,
+                // do NOT auto-move. The player might want to roll again or use the other dice
+                // on the token once it's on the board.
+                if (moveTarget.isHome && diceQueue.length > 1) {
+                    console.log("Inhibiting auto-move for house spawn while multiple dice are in tray.");
+                    return;
+                }
+
+                console.log("Forced auto-move detected...");
 
                 pendingAutoMoveRef.current = selectedDiceId;
 
                 const timeoutId = setTimeout(() => {
-                    moveToken(moveTarget.id, moveTarget.color);
+                    moveToken(moveTarget.tokenId, moveTarget.color, moveTarget.diceId);
                     pendingAutoMoveRef.current = null;
                 }, 600);
                 return () => clearTimeout(timeoutId);
-            } else if (validMoves.length > 1) {
-                // Check if all valid moves are effectively "the same move" (e.g. splitting any token of a double on a safe spot, or moving pair)
-                // Unique by (Color + Source Step).
-                const uniqueSteps = new Set(validMoves.map(m => `${m.color}-${m.steps}`));
-                if (uniqueSteps.size === 1) {
-                    // All valid tokens are at same spot and same color.
-                    // Just pick the first one.
-                    const moveTarget = validMoves[0];
-
-                    // Relaxed Inhibit auto-move for doubles: only inhibit if it's NOT a forced pair move
-                    const tokensAtSpot = gameState[moveTarget.color].filter(t => t.stepsMoved === moveTarget.steps && t.stepsMoved !== -1 && t.stepsMoved < 56);
-                    if (tokensAtSpot.length > 1) {
-                        const isSafeAtSpot = SAFE_SPOTS.includes((PATH_OFFSETS[moveTarget.color] + moveTarget.steps) % 52) || (moveTarget.steps > 50 && moveTarget.steps < 56);
-                        const mustMoveAsPair = !isSafeAtSpot && (dice.value % 2 === 0);
-
-                        // If it's a double on a safe spot (including start cell or home stretch),
-                        // and we have a choice between splitting (single) or moving pair (if even), we INHIBIT.
-                        if (!mustMoveAsPair) {
-                            console.log("Inhibiting auto-move for split-capable double token.");
-                            return;
-                        }
-                    }
-
-                    // INHIBIT if it's a house-exit scenario and we have board options (covered by validMoves.length > 1)
-                    // or if we have multiple pieces at different home-stretch spots (covered by uniqueSteps.size > 1)
-
-                    console.log("Auto-moving unique logical option...");
-
-                    pendingAutoMoveRef.current = selectedDiceId;
-
-                    const timeoutId = setTimeout(() => {
-                        moveToken(moveTarget.id, moveTarget.color);
-                        pendingAutoMoveRef.current = null;
-                    }, 600);
-                    return () => clearTimeout(timeoutId);
-                }
             }
         }
-    }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, selectedDiceId, isValidMove, isTeamMode]);
+    }, [diceQueue, rolling, canRoll, gameState, currentPlayerColor, selectedDiceId, isValidMove, isTeamMode, moveToken, isVoidingTurn, gameMode]);
 
 
-    const rollDice = () => {
-        if (!canRoll) return;
-        setCanRoll(false); // Lock immediately to prevent multi-click exploit
-        setRolling(true);
-        setSelectedDiceId(null); // Clear selection when rolling more
-        playDiceRollSound();
-        setLastRollValue(0); // Reset display while pulling
+    const exitPlayer = useCallback((color) => {
+        if (exitedPlayers.includes(color)) return;
 
-        setTimeout(() => {
-            // Weighted Dice Logic
-            const weightPool = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6];
-            const val = weightPool[Math.floor(Math.random() * weightPool.length)];
+        const newExited = [...exitedPlayers, color];
+        setExitedPlayers(newExited);
 
-            setRolling(false);
-            setLastRollValue(val);
+        // Clear tokens from board - move them to -1 (House)
+        setGameState(prev => ({
+            ...prev,
+            [color]: prev[color].map(t => ({ ...t, stepsMoved: -1 }))
+        }));
 
-            if (val === 6) {
-                const newCount = consecutiveSixes + 1;
+        // Calculate potential remaining players including those who already finished
+        const totalActiveIndices = isTeamMode ? [0, 1, 2, 3] : (playerCount === 2 ? [0, 2] : (playerCount === 3 ? [0, 1, 2] : [0, 1, 2, 3]));
+        const remainingCount = totalActiveIndices.filter(idx => !newExited.includes(PLAYER_ORDER[idx])).length;
 
-                // 3 Consecutive Sixes Rule
-                if (newCount === 3) {
-                    console.log("Three 6s in a row! Turn forfeited.");
-                    setIsVoidingTurn(true);
-                    const newDice = { id: Date.now() + Math.random(), value: val };
-                    const oldQueue = [...diceQueue, newDice];
-                    setDiceQueue(oldQueue);
-                    setConsecutiveSixes(0);
-                    setCanRoll(false);
-
-                    setTimeout(() => {
-                        setDiceQueue([]); // Clear everything after delay
-                        setSelectedDiceId(null);
-                        setIsVoidingTurn(false);
-                        nextTurn(); // Already waited 2s on this turn, no need to show in legacy
-                    }, 1000); // 1 second delay to show the "triple six"
-                    return;
-                }
-
-                // Allow stacking 6s
-                const newDice = { id: Date.now() + Math.random(), value: val };
-                setDiceQueue(prev => [...prev, newDice]);
-                setCanRoll(true);
-                setConsecutiveSixes(newCount);
-            } else {
-                // Non-6, stop rolling
-                const newDice = { id: Date.now() + Math.random(), value: val };
-                setDiceQueue(prev => [...prev, newDice]);
-                setCanRoll(false);
-                // Do NOT reset consecutiveSixes here; it must be cumulative for the whole turn
-            }
-        }, 200);
-    };
-
-    const selectDice = (id) => {
-        // User requirement: disable selection until all rolls are done (canRoll is false)
-        if (canRoll) {
-            console.log("Finish rolling first!");
-            return;
-        }
-        setSelectedDiceId(id);
-    };
-
-    const isGloballySafe = (index) => {
-        return SAFE_SPOTS.includes(index);
-    };
-
-    const moveToken = (tokenId, tokenColor = currentPlayerColor, diceId = null) => {
-        if (isVoidingTurn) return;
-        // Rule: All dice rolls must be completed before any move is allowed
-        if (canRoll) {
-            console.log("Finish all rolls before moving!");
+        if (remainingCount <= 1) {
+            const winnerIdx = totalActiveIndices.find(idx => !newExited.includes(PLAYER_ORDER[idx]));
+            const winnerColor = winnerIdx !== undefined ? PLAYER_ORDER[winnerIdx] : "None";
+            setGameWinner({ type: 'PLAYER', color: winnerColor, name: winnerColor.charAt(0).toUpperCase() + winnerColor.slice(1) });
+            setGameEnded(true);
             return;
         }
 
-        // diceId can be passed manually if choosing from a menu
-        const effectiveDiceId = diceId || selectedDiceId;
-        if (!effectiveDiceId) return;
-
-        const diceObj = diceQueue.find(d => d.id === effectiveDiceId);
-        if (!diceObj) return;
-        const moveValue = diceObj.value;
-
-        const tokens = gameState[tokenColor];
-        const token = tokens.find(t => t.id === tokenId);
-
-        // Validation - Pass tokenColor
-        if (!isValidMove(token, moveValue, tokenColor)) {
-            console.log("Invalid move");
-            return;
+        if (PLAYER_ORDER[turn] === color) {
+            // It was their turn, skip it
+            nextTurn();
         }
-
-        // Verify Team Permission
-        if (tokenColor !== currentPlayerColor) {
-            if (!isTeamMode) {
-                console.warn("Cannot move opponent token!");
-                return;
-            }
-            const currentIdx = PLAYER_ORDER.indexOf(currentPlayerColor);
-            const tokenIdx = PLAYER_ORDER.indexOf(tokenColor);
-            if (Math.abs(currentIdx - tokenIdx) !== 2) {
-                console.warn("Cannot move non-teammate token!");
-                return;
-            }
-
-            // PRIORITY CHECK: Current player should not have valid moves for themselves
-            const anyOwnValid = gameState[currentPlayerColor].some(t => isValidMove(t, moveValue, currentPlayerColor));
-            if (anyOwnValid) {
-                console.warn("Requested teammate move, but current player has valid moves for themselves. Ignoring.");
-                return;
-            }
-        }
-
-        // Determine Move Type (Single vs Pair)
-        const tokensAtSpot = tokens.filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
-        const isDoubled = tokensAtSpot.length >= 2;
-        const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[tokenColor] + token.stepsMoved) % 52);
-
-        let actualMoveSteps = moveValue;
-        let tokensToMove = [token];
-
-        if (isDoubled) {
-            if (isSafe) {
-                // Safe spot allows separation -> Single Move
-                actualMoveSteps = moveValue;
-                tokensToMove = [token];
-            } else {
-                // Not safe: MUST move as pair (if even)
-                if (moveValue % 2 === 0) {
-                    actualMoveSteps = moveValue / 2;
-                    tokensToMove = [tokensAtSpot[0], tokensAtSpot[1]];
-                } else {
-                    return; // Should be blocked by isValidMove
-                }
-            }
-        }
-
-        const isMasterLocked = gameMode === GAME_MODES.MASTER && !playerData[tokenColor]?.hasCaptured;
-        let newSteps = (token.stepsMoved === -1) ? 0 : token.stepsMoved + actualMoveSteps;
-
-        if (isMasterLocked && newSteps > 50) {
-            newSteps = newSteps % 52; // Wrap around the 52-cell cycle
-        }
-
-        // Apply Move
-        let captureOccurred = false;
-        let newGameState = { ...gameState };
-        let newPlayerData = { ...playerData };
-
-        const goalReached = newSteps === 56;
-        if (newSteps <= 50 || (isMasterLocked && newSteps === 51)) {
-            const offset = PATH_OFFSETS[tokenColor];
-            const globalPathIndex = (offset + newSteps) % 52;
-
-            if (!isGloballySafe(globalPathIndex)) {
-                PLAYER_ORDER.forEach(pColor => {
-                    if (pColor === tokenColor) return;
-
-                    // Team Mode: Do not capture teammate?
-                    if (isTeamMode) {
-                        const idx1 = PLAYER_ORDER.indexOf(tokenColor);
-                        const idx2 = PLAYER_ORDER.indexOf(pColor);
-                        if (Math.abs(idx1 - idx2) === 2) return; // No friendly fire
-                    }
-
-                    // Check opponets at this spot
-                    const opponentsAtSpot = newGameState[pColor].filter(oppToken => {
-                        const isOpponentLocked = gameMode === GAME_MODES.MASTER && !newPlayerData[pColor]?.hasCaptured;
-                        const maxStep = isOpponentLocked ? 51 : 50;
-                        if (oppToken.stepsMoved === -1 || oppToken.stepsMoved > maxStep) return false;
-                        const oppOffset = PATH_OFFSETS[pColor];
-                        return ((oppOffset + oppToken.stepsMoved) % 52) === globalPathIndex;
-                    });
-
-                    if (opponentsAtSpot.length > 0) {
-                        // Capture!
-                        const isAttackerDouble = tokensToMove.length >= 2;
-                        const isDefenderDouble = opponentsAtSpot.length >= 2;
-
-                        if (!isAttackerDouble && isDefenderDouble) {
-                            console.warn("Illegal capture attempt blocked: Single trying to capture Double.");
-                            captureOccurred = false;
-                        } else {
-                            captureOccurred = true;
-                            // Credit the TOKEN OWNER for the capture
-                            newPlayerData[tokenColor] = { hasCaptured: true };
-
-                            // Reset opponents
-                            newGameState[pColor] = newGameState[pColor].map(oppToken => {
-                                if (opponentsAtSpot.some(o => o.id === oppToken.id)) {
-                                    return { ...oppToken, stepsMoved: -1 };
-                                }
-                                return oppToken;
-                            });
-                        }
-                    }
-                });
-            }
-        }
-
-        // Update moved tokens
-        newGameState[tokenColor] = newGameState[tokenColor].map(t => {
-            if (tokensToMove.some(tm => tm.id === t.id)) {
-                return { ...t, stepsMoved: newSteps };
-            }
-            return t;
-        });
-
-        playMoveSound();
-        setGameState(newGameState);
-        setPlayerData(newPlayerData);
-
-        // Remove used dice
-        const remainingQueue = diceQueue.filter(d => d.id !== (diceId || selectedDiceId));
-        setDiceQueue(remainingQueue);
-
-        // Auto-select next available
-        if (remainingQueue.length > 0) {
-            setSelectedDiceId(remainingQueue[0].id);
-        } else {
-            setSelectedDiceId(null);
-        }
-
-        if (captureOccurred || goalReached) {
-            setCanRoll(true);
-        } else if (remainingQueue.length === 0 && !canRoll) {
-            // Add a short delay before passing turn to let user see the final move animation
-            // Since it's utilized, DO NOT pass it into legacy tray
-            setTimeout(() => nextTurn(), 250);
-        }
-    };
+    }, [exitedPlayers, turn, isTeamMode, playerCount, nextTurn]);
 
     const validTokenIds = [];
     if (diceQueue.length > 0) {
@@ -593,7 +627,7 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
                     if (isValidMove(token, dice.value, color)) {
                         // Determine Actual Move Steps (Pair Move Detection)
                         const tokensAtSpot = gameState[color].filter(t => t.stepsMoved === token.stepsMoved && t.stepsMoved !== -1 && t.stepsMoved < 51);
-                        const isDoubled = tokensAtSpot.length >= 2;
+                        const isDoubled = gameMode === GAME_MODES.MASTER && tokensAtSpot.length >= 2;
                         const isSafe = SAFE_SPOTS.includes((PATH_OFFSETS[color] + token.stepsMoved) % 52);
 
                         let actualMoveSteps = dice.value;
@@ -733,9 +767,14 @@ export const useLudoGame = (gameMode = GAME_MODES.CLASSIC, isTeamMode = false) =
         moveToken,
         getValidDiceForToken,
         getMovesToCaptureTarget,
+        gameEnded,
+        gameWinner,
+        exitPlayer,
+        exitedPlayers,
         turn,
         playerData,
         validTokenIds,
-        capturableTokenIds
+        capturableTokenIds,
+        finishOrder
     };
 };
