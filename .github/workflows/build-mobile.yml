@@ -73,6 +73,7 @@ jobs:
 
       - name: Build iOS App (Unsigned)
         run: |
+          ls -R ios/App/*.xcworkspace
           xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO
 
       - name: Upload iOS App
