@@ -20,7 +20,7 @@ const StartScreen = ({ onStart }) => {
 
     return (
         <div className="start-screen">
-            <h1 className="start-title">LUDO MASTER</h1>
+            <h1 className="start-title">LUDO LOCAL</h1>
 
             <div className="setup-container">
                 <div className="player-selection-section">
